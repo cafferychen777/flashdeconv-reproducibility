@@ -35,9 +35,16 @@ flashdeconv-reproducibility/
 │   ├── benchmark_liver.py              # Liver case study
 │   ├── benchmark_melanoma.py           # Melanoma case study
 │   └── benchmark_scalability.py        # Scalability benchmark (1K-100K spots)
-├── analysis/                           # Additional analysis scripts
-│   ├── resolution_horizon_analysis.py  # Visium HD multi-scale analysis
-│   └── tuft_stem_discovery.py          # Rare cell type niche discovery
+├── analysis/                           # Analysis pipelines
+│   ├── leverage_deep_dive.py           # Leverage mechanism analysis (Figure 2)
+│   ├── resolution_horizon_analysis.py  # Visium HD multi-scale analysis (Figure 6)
+│   └── hidden_cell_analysis.py         # Hidden cell type discovery
+├── figures/                            # Figure generation scripts
+│   ├── main/                           # Main paper figures
+│   │   ├── figure2_leverage_mechanism.py
+│   │   ├── figure5_cortex_lamination.py
+│   │   └── figure7_tuft_discovery.py
+│   └── supplementary/                  # Supplementary figures
 ├── scripts/                            # Data preparation scripts
 │   ├── download_spotless_data.sh       # Download Spotless data from Zenodo
 │   ├── convert_spotless_data.R         # Convert RDS to MTX format
@@ -226,10 +233,65 @@ python analysis/resolution_horizon_analysis.py \
     --output_dir ./results \
     --bins 16,32,64,128
 
-# Tuft-Stem cell niche discovery
-python analysis/tuft_stem_discovery.py \
+# Generate Figure 7: Tuft-Stem discovery
+python figures/main/figure7_tuft_discovery.py \
+    --results_dir ./results \
+    --output_dir ./figures
+```
+
+### Part 3: Cortex Lamination (Figure 5)
+
+This analysis validates FlashDeconv using Cell2location's paired mouse brain dataset.
+
+#### Step 1: Download Data
+
+```bash
+# Download Cell2location mouse brain data
+mkdir -p ./data/mouse_brain/C2L/ST/48/spatial
+cd ./data/mouse_brain
+
+# scRNA-seq reference
+curl -o scrna_reference.h5ad https://cell2location.cog.sanger.ac.uk/tutorial/mouse_brain_snrna/regression_model/RegressionGeneBackgroundCoverageTorch_65covariates_40532cells_12819genes/sc.h5ad
+
+# Cell annotation
+curl -o cell_annotation.csv https://cell2location.cog.sanger.ac.uk/tutorial/mouse_brain_snrna_sc_adata_annotation.csv
+
+# Visium data (ST8059048)
+cd C2L/ST/48
+curl -o ST8059048_filtered_feature_bc_matrix.h5 "https://cell2location.cog.sanger.ac.uk/tutorial/ST/ST8059048/filtered_feature_bc_matrix.h5"
+cd spatial
+curl -o tissue_positions_list.csv "https://cell2location.cog.sanger.ac.uk/tutorial/ST/ST8059048/spatial/tissue_positions_list.csv"
+cd ../../../../..
+```
+
+#### Step 2: Run Analysis
+
+```bash
+# Run deconvolution (generates level2_v3_data.npz)
+python analysis/cortex_deconvolution.py \
     --data_dir ./data \
     --output_dir ./results
+
+# Generate Figure 5
+python figures/main/figure5_cortex_lamination.py \
+    --results_dir ./results \
+    --output_dir ./figures
+```
+
+### Part 4: Leverage Mechanism (Figure 2)
+
+This analysis demonstrates how leverage scores decouple biological identity from population abundance.
+
+```bash
+# Run leverage analysis
+python analysis/leverage_deep_dive.py \
+    --data_dir ./data \
+    --output_dir ./results
+
+# Generate Figure 2
+python figures/main/figure2_leverage_mechanism.py \
+    --results_dir ./results \
+    --output_dir ./figures
 ```
 
 ---
