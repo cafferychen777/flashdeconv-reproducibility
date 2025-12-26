@@ -3,6 +3,8 @@
 This repository contains code and data links for reproducing the results in the FlashDeconv paper.
 
 > **FlashDeconv enables atlas-scale, multi-resolution spatial deconvolution via structure-preserving sketching**
+>
+> Chen Yang, Jun Chen, Xianyang Zhang. *bioRxiv* (2025). DOI: [10.64898/2025.12.22.696108](https://doi.org/10.64898/2025.12.22.696108)
 
 ## Quick Start
 
@@ -300,12 +302,16 @@ python figures/main/figure2_leverage_mechanism.py \
 
 If you use FlashDeconv or this reproducibility code, please cite:
 
+> Yang, C., Chen, J. & Zhang, X. FlashDeconv enables atlas-scale, multi-resolution spatial deconvolution via structure-preserving sketching. *bioRxiv* (2025). https://doi.org/10.64898/2025.12.22.696108
+
 ```bibtex
-@article{flashdeconv2024,
+@article{yang2025flashdeconv,
   title={FlashDeconv enables atlas-scale, multi-resolution spatial deconvolution via structure-preserving sketching},
-  author={Yang, Chen and Zhang, Xianyang and Chen, Jun},
+  author={Yang, Chen and Chen, Jun and Zhang, Xianyang},
   journal={bioRxiv},
-  year={2024}
+  year={2025},
+  doi={10.64898/2025.12.22.696108},
+  url={https://doi.org/10.64898/2025.12.22.696108}
 }
 ```
 
