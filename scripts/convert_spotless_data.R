@@ -28,6 +28,10 @@ cat("Input directory:", data_dir, "\n")
 cat("Output directory:", output_dir, "\n")
 cat(strrep("=", 60), "\n\n")
 
+# Track conversion results for final summary
+converted <- character(0)
+skipped <- character(0)
+
 # ============================================================
 # Helper function to save Seurat object
 # ============================================================
@@ -122,6 +126,7 @@ for (id in names(silver_refs)) {
 
     if (!file.exists(rds_file)) {
         cat("  [SKIP] Reference", id, "not found:", rds_file, "\n")
+        skipped <<- c(skipped, paste0("reference_", id))
         next
     }
 
@@ -130,6 +135,7 @@ for (id in names(silver_refs)) {
     prefix <- file.path(output_dir, paste0("reference_", id))
     save_seurat(ref, prefix, is_spatial = FALSE)
     cat("    Cells:", ncol(ref), " Genes:", nrow(ref), "\n")
+    converted <<- c(converted, paste0("reference_", id))
 }
 
 # ============================================================
@@ -157,6 +163,7 @@ for (ds_id in names(silver_tests)) {
             paste0("silver_standard_", ds_id, "_", info$name, "_", pattern_id, ".rds"))
 
         if (!file.exists(rds_file)) {
+            skipped <<- c(skipped, paste0("silver_", ds_id, "_", pattern_id))
             next
         }
 
@@ -188,6 +195,7 @@ for (ds_id in names(silver_tests)) {
         write.csv(proportions, paste0(prefix, "_proportions.csv"))
 
         cat("    Pattern", pattern_id, ": spots=", ncol(test), "\n")
+        converted <<- c(converted, paste0("silver_", ds_id, "_", pattern_id))
     }
 }
 
@@ -206,6 +214,10 @@ if (file.exists(liver_ref_file)) {
     prefix <- file.path(output_dir, "liver_ref_9ct")
     save_seurat(ref, prefix, is_spatial = FALSE)
     cat("    Cells:", ncol(ref), " Genes:", nrow(ref), "\n")
+    converted <- c(converted, "liver_ref")
+} else {
+    cat("  [SKIP] Liver reference not found:", liver_ref_file, "\n")
+    skipped <- c(skipped, "liver_ref")
 }
 
 # Visium samples
@@ -213,6 +225,7 @@ for (sample_id in c("JB01", "JB02", "JB03", "JB04")) {
     sample_file <- file.path(liver_dir, paste0("liver_mouseVisium_", sample_id, ".rds"))
     if (!file.exists(sample_file)) {
         cat("  [SKIP] Sample", sample_id, "not found\n")
+        skipped <- c(skipped, paste0("liver_", sample_id))
         next
     }
 
@@ -221,6 +234,7 @@ for (sample_id in c("JB01", "JB02", "JB03", "JB04")) {
     prefix <- file.path(output_dir, paste0("liver_mouseVisium_", sample_id))
     save_seurat(sp, prefix, is_spatial = TRUE)
     cat("    Spots:", ncol(sp), " Genes:", nrow(sp), "\n")
+    converted <- c(converted, paste0("liver_", sample_id))
 }
 
 # ============================================================
@@ -238,6 +252,10 @@ if (file.exists(melanoma_ref_file)) {
     prefix <- file.path(output_dir, "melanoma_ref")
     save_seurat(ref, prefix, is_spatial = FALSE)
     cat("    Cells:", ncol(ref), " Genes:", nrow(ref), "\n")
+    converted <- c(converted, "melanoma_ref")
+} else {
+    cat("  [SKIP] Melanoma reference not found:", melanoma_ref_file, "\n")
+    skipped <- c(skipped, "melanoma_ref")
 }
 
 # Visium samples
@@ -245,6 +263,7 @@ for (sample_id in c("02", "03", "04")) {
     sample_file <- file.path(melanoma_dir, paste0("melanoma_visium_sample", sample_id, ".rds"))
     if (!file.exists(sample_file)) {
         cat("  [SKIP] Sample", sample_id, "not found\n")
+        skipped <- c(skipped, paste0("melanoma_", sample_id))
         next
     }
 
@@ -253,6 +272,7 @@ for (sample_id in c("02", "03", "04")) {
     prefix <- file.path(output_dir, paste0("melanoma_visium_sample", sample_id))
     save_seurat(sp, prefix, is_spatial = TRUE)
     cat("    Spots:", ncol(sp), " Genes:", nrow(sp), "\n")
+    converted <- c(converted, paste0("melanoma_", sample_id))
 }
 
 # ============================================================
@@ -327,6 +347,46 @@ for (gold_dir in gold_dirs) {
 
 cat("\n")
 cat(strrep("=", 60), "\n")
-cat("Conversion complete!\n")
-cat("Output directory:", output_dir, "\n")
+cat("Conversion Summary\n")
+cat(strrep("=", 60), "\n")
+cat("  Converted:", length(converted), "datasets\n")
+cat("  Skipped:  ", length(skipped), "datasets\n")
+cat("  Output:   ", output_dir, "\n")
+
+if (length(skipped) > 0) {
+    cat("\nSkipped datasets:\n")
+    for (s in skipped) {
+        cat("  -", s, "\n")
+    }
+    cat("\nIf many datasets are skipped, the tarball may have extracted")
+    cat("\nwith a top-level directory. Check:\n")
+    cat("  ls", data_dir, "\n")
+    cat("If you see a 'standards/' or similar subdirectory, move its\n")
+    cat("contents up and re-run this script:\n")
+    cat("  mv", file.path(data_dir, "standards/*"), data_dir, "\n")
+}
+
+# Expected counts for validation
+expected_silver_refs <- 6
+expected_silver_tests <- 56  # 11 + 9*5
+expected_liver <- 5          # 1 ref + 4 samples
+expected_melanoma <- 4       # 1 ref + 3 samples
+
+n_silver_refs <- sum(grepl("^reference_", converted))
+n_silver_tests <- sum(grepl("^silver_", converted))
+n_liver <- sum(grepl("^liver_", converted))
+n_melanoma <- sum(grepl("^melanoma_", converted))
+
+cat("\nExpected vs actual:\n")
+cat(sprintf("  Silver references : %d / %d\n", n_silver_refs, expected_silver_refs))
+cat(sprintf("  Silver test sets  : %d / %d\n", n_silver_tests, expected_silver_tests))
+cat(sprintf("  Liver datasets    : %d / %d\n", n_liver, expected_liver))
+cat(sprintf("  Melanoma datasets : %d / %d\n", n_melanoma, expected_melanoma))
+
+if (length(skipped) == 0) {
+    cat("\nAll datasets converted successfully.\n")
+} else {
+    cat("\nWARNING: Some datasets were not found. Benchmarks may be incomplete.\n")
+    quit(status = 1)
+}
 cat(strrep("=", 60), "\n")

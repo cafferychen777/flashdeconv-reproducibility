@@ -12,7 +12,7 @@
 # Example:
 #     bash download_spotless_data.sh ./data/spotless
 
-set -e
+set -euo pipefail
 
 OUTPUT_DIR="${1:-./data/spotless}"
 mkdir -p "$OUTPUT_DIR"
@@ -25,44 +25,132 @@ echo "============================================================"
 # Zenodo base URL
 ZENODO_BASE="https://zenodo.org/records/10277187/files"
 
-# Download Silver & Gold standards
-echo ""
-echo "[1/3] Downloading Silver & Gold standards (6.9 GB)..."
-echo "This may take a while..."
-curl -L -o "$OUTPUT_DIR/standards.tar.gz" "$ZENODO_BASE/standards.tar.gz?download=1"
+download_file() {
+    local url="$1"
+    local dest="$2"
+    local desc="$3"
 
-# Download Liver datasets
-echo ""
-echo "[2/3] Downloading Liver case study data (4.5 GB)..."
-curl -L -o "$OUTPUT_DIR/liver_datasets.tar.gz" "$ZENODO_BASE/liver_datasets.tar.gz?download=1"
+    if [ -f "$dest" ]; then
+        echo "  Already downloaded: $(basename "$dest"), skipping."
+        return 0
+    fi
 
-# Download Melanoma datasets
+    echo "  Downloading $desc..."
+    if ! curl -fL --retry 3 --retry-delay 5 -o "$dest" "$url"; then
+        echo "ERROR: Failed to download $desc from $url" >&2
+        echo "  Check your internet connection and that the Zenodo record is accessible:" >&2
+        echo "  https://zenodo.org/records/10277187" >&2
+        rm -f "$dest"  # remove partial download
+        return 1
+    fi
+
+    # Verify download is not empty / HTML error page
+    local size
+    size=$(wc -c < "$dest")
+    if [ "$size" -lt 1000 ]; then
+        echo "ERROR: Downloaded file is suspiciously small ($size bytes)." >&2
+        echo "  The Zenodo record may have moved or require authentication." >&2
+        rm -f "$dest"
+        return 1
+    fi
+}
+
+# Download all three archives
 echo ""
-echo "[3/3] Downloading Melanoma case study data (1.3 GB)..."
-curl -L -o "$OUTPUT_DIR/melanoma_datasets.tar.gz" "$ZENODO_BASE/melanoma_datasets.tar.gz?download=1"
+echo "[1/3] Silver & Gold standards (standards.tar.gz, ~6.9 GB)..."
+download_file "$ZENODO_BASE/standards.tar.gz?download=1" \
+              "$OUTPUT_DIR/standards.tar.gz" \
+              "Silver & Gold standards"
+
+echo ""
+echo "[2/3] Liver case study (liver_datasets.tar.gz, ~4.5 GB)..."
+download_file "$ZENODO_BASE/liver_datasets.tar.gz?download=1" \
+              "$OUTPUT_DIR/liver_datasets.tar.gz" \
+              "Liver datasets"
+
+echo ""
+echo "[3/3] Melanoma case study (melanoma_datasets.tar.gz, ~1.3 GB)..."
+download_file "$ZENODO_BASE/melanoma_datasets.tar.gz?download=1" \
+              "$OUTPUT_DIR/melanoma_datasets.tar.gz" \
+              "Melanoma datasets"
 
 echo ""
 echo "============================================================"
-echo "Download complete! Extracting files..."
+echo "Downloads complete. Extracting archives..."
 echo "============================================================"
 
-# Extract files
-cd "$OUTPUT_DIR"
+extract_archive() {
+    local archive="$1"
+    local name
+    name="$(basename "$archive")"
 
-echo "Extracting standards.tar.gz..."
-tar -xzf standards.tar.gz
+    if [ ! -f "$archive" ]; then
+        echo "WARNING: $name not found, skipping extraction." >&2
+        return 1
+    fi
 
-echo "Extracting liver_datasets.tar.gz..."
-tar -xzf liver_datasets.tar.gz
+    echo "  Extracting $name..."
+    if ! tar -xzf "$archive" -C "$OUTPUT_DIR"; then
+        echo "ERROR: Failed to extract $name. The file may be corrupted." >&2
+        echo "  Delete it and re-run this script to re-download:" >&2
+        echo "    rm $archive" >&2
+        return 1
+    fi
+}
 
-echo "Extracting melanoma_datasets.tar.gz..."
-tar -xzf melanoma_datasets.tar.gz
+extract_archive "$OUTPUT_DIR/standards.tar.gz"
+extract_archive "$OUTPUT_DIR/liver_datasets.tar.gz"
+extract_archive "$OUTPUT_DIR/melanoma_datasets.tar.gz"
+
+echo ""
+echo "============================================================"
+echo "Validating extracted directory structure..."
+echo "============================================================"
+
+ERRORS=0
+
+check_dir() {
+    if [ -d "$OUTPUT_DIR/$1" ]; then
+        local count
+        count=$(find "$OUTPUT_DIR/$1" -name "*.rds" | wc -l | tr -d ' ')
+        echo "  OK  $1/ ($count RDS files)"
+    else
+        echo "  MISSING  $1/"
+        ERRORS=$((ERRORS + 1))
+    fi
+}
+
+check_dir "reference"
+check_dir "test_silver_standard"
+check_dir "gold_standard_1"
+check_dir "gold_standard_2"
+check_dir "gold_standard_3"
+check_dir "liver"
+check_dir "melanoma"
+
+if [ "$ERRORS" -gt 0 ]; then
+    echo ""
+    echo "WARNING: $ERRORS expected directories are missing." >&2
+    echo "  The tarball structure may differ from what this script expects." >&2
+    echo "  Please check the Zenodo page and inspect the extracted contents:" >&2
+    echo "    ls $OUTPUT_DIR/" >&2
+    echo "    tar -tzf $OUTPUT_DIR/standards.tar.gz | head -30" >&2
+    echo ""
+    echo "  If tarballs extract with a top-level directory (e.g., standards/)," >&2
+    echo "  move the contents up:" >&2
+    echo "    mv $OUTPUT_DIR/standards/* $OUTPUT_DIR/" >&2
+else
+    echo ""
+    echo "All expected directories found."
+fi
 
 echo ""
 echo "============================================================"
 echo "Done! Data is ready in: $OUTPUT_DIR"
 echo ""
 echo "Next steps:"
-echo "  1. Run: Rscript scripts/convert_spotless_data.R $OUTPUT_DIR"
-echo "  2. Run: python benchmarks/benchmark_silver_standards.py"
+echo "  1. Convert to Python-readable format:"
+echo "     Rscript scripts/convert_spotless_data.R $OUTPUT_DIR"
+echo "  2. Run benchmarks:"
+echo "     python benchmarks/benchmark_silver_standards.py --data_dir $OUTPUT_DIR/converted"
 echo "============================================================"

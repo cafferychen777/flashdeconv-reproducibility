@@ -13,6 +13,8 @@
 # 2. Haber et al. intestine scRNA-seq reference from Zenodo (~160 MB)
 #
 
+set -euo pipefail
+
 DATA_DIR=${1:-./data}
 mkdir -p "$DATA_DIR"
 
@@ -32,17 +34,23 @@ else
     echo ""
     echo "Downloading Visium HD Mouse Small Intestine data (~6 GB)..."
     echo "Source: 10x Genomics"
-    echo "URL: $VISIUM_URL"
-    echo ""
 
     if [ -f "$VISIUM_FILE" ]; then
         echo "Archive already downloaded, extracting..."
     else
-        curl -L -o "$VISIUM_FILE" "$VISIUM_URL"
+        if ! curl -fL --retry 3 --retry-delay 5 -o "$VISIUM_FILE" "$VISIUM_URL"; then
+            echo "ERROR: Failed to download Visium HD data." >&2
+            rm -f "$VISIUM_FILE"
+            exit 1
+        fi
     fi
 
     echo "Extracting Visium HD data..."
-    tar -xzf "$VISIUM_FILE" -C "$DATA_DIR"
+    if ! tar -xzf "$VISIUM_FILE" -C "$DATA_DIR"; then
+        echo "ERROR: Failed to extract Visium HD archive. File may be corrupted." >&2
+        echo "  Delete and retry: rm $VISIUM_FILE" >&2
+        exit 1
+    fi
     echo "Done!"
 fi
 
@@ -56,11 +64,13 @@ if [ -f "$HABER_FILE" ]; then
 else
     echo ""
     echo "Downloading Haber et al. intestine scRNA-seq reference (~160 MB)..."
-    echo "Source: Zenodo (Cell2location tutorial data)"
-    echo "URL: $HABER_URL"
-    echo ""
+    echo "Source: Zenodo (record 4447233)"
 
-    curl -L -o "$HABER_FILE" "$HABER_URL"
+    if ! curl -fL --retry 3 --retry-delay 5 -o "$HABER_FILE" "$HABER_URL"; then
+        echo "ERROR: Failed to download Haber reference." >&2
+        rm -f "$HABER_FILE"
+        exit 1
+    fi
     echo "Done!"
 fi
 

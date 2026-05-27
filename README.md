@@ -15,10 +15,16 @@ pip install flashdeconv
 # 2. Download benchmark data (requires ~13 GB)
 bash scripts/download_spotless_data.sh ./data/spotless
 
-# 3. Convert data to Python-readable format
+# 3. Validate the download (checks directory structure and file counts)
+bash scripts/validate_data.sh ./data/spotless
+
+# 4. Convert data to Python-readable format
 Rscript scripts/convert_spotless_data.R ./data/spotless
 
-# 4. Run benchmarks
+# 5. Validate again (now checks converted files too)
+bash scripts/validate_data.sh ./data/spotless
+
+# 6. Run benchmarks
 python benchmarks/benchmark_silver_standards.py --data_dir ./data/spotless/converted
 python benchmarks/benchmark_gold_standard.py --data_dir ./data/spotless/converted
 python benchmarks/benchmark_liver.py --data_dir ./data/spotless/converted
@@ -50,6 +56,7 @@ flashdeconv-reproducibility/
 ├── scripts/                            # Data preparation scripts
 │   ├── download_spotless_data.sh       # Download Spotless data from Zenodo
 │   ├── convert_spotless_data.R         # Convert RDS to MTX format
+│   ├── validate_data.sh               # Validate downloaded/converted data
 │   ├── download_visium_hd_data.sh      # Download Visium HD data
 │   └── prepare_haber_reference.py      # Prepare Haber et al. reference
 └── results/                            # Output directory for results
@@ -84,6 +91,40 @@ Files:
 - `standards.tar.gz` (6.9 GB) - Silver and Gold standards
 - `liver_datasets.tar.gz` (4.5 GB) - Liver case study
 - `melanoma_datasets.tar.gz` (1.3 GB) - Melanoma case study
+
+After downloading and extracting (via `download_spotless_data.sh`), the expected directory structure is:
+
+```
+data/spotless/
+├── reference/                          # Silver Standard scRNA-seq references (6 RDS files)
+│   ├── silver_standard_1_brain_cortex.rds
+│   ├── silver_standard_2_cerebellum_cell.rds
+│   ├── silver_standard_3_cerebellum_nucleus.rds
+│   ├── silver_standard_4_hippocampus.rds
+│   ├── silver_standard_5_kidney.rds
+│   └── silver_standard_6_scc_p5.rds
+├── test_silver_standard/               # Silver Standard synthetic pseudo-spots (56 RDS files)
+│   ├── silver_standard_1_brain_cortex_1.rds
+│   ├── silver_standard_1_brain_cortex_2.rds
+│   ├── ...                             # (brain_cortex has patterns 1-11; others have 1-9)
+│   └── silver_standard_6_scc_p5_9.rds
+├── gold_standard_1/                    # seqFISH+ cortex (Eng et al. 2019)
+├── gold_standard_2/                    # seqFISH+ olfactory bulb (Eng et al. 2019)
+├── gold_standard_3/                    # STARMap (Wang et al. 2018)
+├── liver/                              # Liver case study (5 RDS files)
+│   ├── liver_mouseStSt_9celltypes.rds  # snRNA-seq reference
+│   ├── liver_mouseVisium_JB01.rds      # Visium sample 1
+│   ├── liver_mouseVisium_JB02.rds
+│   ├── liver_mouseVisium_JB03.rds
+│   └── liver_mouseVisium_JB04.rds
+└── melanoma/                           # Melanoma case study (4 RDS files)
+    ├── melanoma_scrna_ref.rds          # scRNA-seq reference
+    ├── melanoma_visium_sample02.rds    # Visium sample 2
+    ├── melanoma_visium_sample03.rds
+    └── melanoma_visium_sample04.rds
+```
+
+Use `bash scripts/validate_data.sh ./data/spotless` to verify this structure after extraction.
 
 ---
 
@@ -170,6 +211,9 @@ R -e "install.packages(c('Seurat', 'Matrix'))"
 ```bash
 # Download Spotless benchmark data (~13 GB total)
 bash scripts/download_spotless_data.sh ./data/spotless
+
+# Validate directory structure
+bash scripts/validate_data.sh ./data/spotless
 ```
 
 #### Step 2: Convert Data
@@ -177,7 +221,12 @@ bash scripts/download_spotless_data.sh ./data/spotless
 ```bash
 # Convert RDS files to MTX format
 Rscript scripts/convert_spotless_data.R ./data/spotless
+
+# Validate converted files
+bash scripts/validate_data.sh ./data/spotless
 ```
+
+The conversion script prints a summary showing how many datasets were converted vs. skipped. If many are skipped, see the [Troubleshooting](#troubleshooting) section.
 
 #### Step 3: Run Benchmarks
 
@@ -295,6 +344,43 @@ python figures/main/figure2_leverage_mechanism.py \
     --results_dir ./results \
     --output_dir ./figures
 ```
+
+---
+
+## Troubleshooting
+
+### Conversion script skips most files
+
+If `convert_spotless_data.R` reports many `[SKIP]` messages, the tarballs likely extracted with a top-level directory (e.g., `standards/reference/` instead of `reference/`). Check:
+
+```bash
+ls ./data/spotless/
+```
+
+If you see a `standards/` subdirectory instead of `reference/` and `test_silver_standard/`, move its contents up:
+
+```bash
+mv ./data/spotless/standards/* ./data/spotless/
+rmdir ./data/spotless/standards
+```
+
+Then re-run the conversion script.
+
+### Download fails or produces small files
+
+The Spotless data is hosted on Zenodo ([record 10277187](https://zenodo.org/records/10277187)). If downloads fail:
+
+1. Check that the Zenodo record is accessible in your browser
+2. Check your internet connection and any institutional proxy settings
+3. For large files, `curl` may time out — retry with a longer timeout:
+   ```bash
+   curl -fL --max-time 3600 -o file.tar.gz "URL"
+   ```
+4. As a fallback, download the tarballs manually from the Zenodo page and place them in `./data/spotless/`
+
+### Validation script reports missing files
+
+Run `bash scripts/validate_data.sh ./data/spotless` to see exactly which directories or files are missing. The script checks both raw RDS files and converted MTX files.
 
 ---
 
