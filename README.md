@@ -80,7 +80,7 @@ The primary benchmark datasets are from the Spotless benchmark study ([Sang-aram
 
 | Dataset | Description | Source |
 |---------|-------------|--------|
-| **Silver Standard** | 56 synthetic datasets (6 tissues × 9 abundance patterns) | [Zenodo](https://zenodo.org/records/10277187) |
+| **Silver Standard** | 56 selected synthetic datasets (6 tissues; replicate 1 from each abundance-pattern directory) | [Zenodo](https://zenodo.org/records/10277187) |
 | **Gold Standard** | STARMap + seqFISH+ (real spatial transcriptomics) | [Zenodo](https://zenodo.org/records/10277187) |
 | **Liver Case Study** | Mouse liver Visium sections (4 samples) | [Zenodo](https://zenodo.org/records/10277187) |
 | **Melanoma Case Study** | Mouse melanoma tumor sections (3 samples) | [Zenodo](https://zenodo.org/records/10277187) |
@@ -103,11 +103,13 @@ data/spotless/
 │   ├── silver_standard_4_hippocampus.rds
 │   ├── silver_standard_5_kidney.rds
 │   └── silver_standard_6_scc_p5.rds
-├── test_silver_standard/               # Silver Standard synthetic pseudo-spots (56 RDS files)
-│   ├── silver_standard_1_brain_cortex_1.rds
-│   ├── silver_standard_1_brain_cortex_2.rds
-│   ├── ...                             # (brain_cortex has patterns 1-11; others have 1-9)
-│   └── silver_standard_6_scc_p5_9.rds
+├── silver_standard_1-1/                # Silver Standard pseudo-spots; each folder has replicate RDS files
+│   ├── brain_cortex_artificial_uniform_distinct_rep1.rds
+│   ├── ...
+│   └── brain_cortex_artificial_uniform_distinct_rep10.rds
+├── silver_standard_1-2/
+├── ...                                 # brain_cortex has patterns 1-11; others have 1-9
+├── silver_standard_6-9/
 ├── gold_standard_1/                    # seqFISH+ cortex (Eng et al. 2019)
 ├── gold_standard_2/                    # seqFISH+ olfactory bulb (Eng et al. 2019)
 ├── gold_standard_3/                    # STARMap (Wang et al. 2018)
@@ -123,6 +125,8 @@ data/spotless/
     ├── melanoma_visium_sample03.rds
     └── melanoma_visium_sample04.rds
 ```
+
+The converter accepts this current Spotless layout and older flat `test_silver_standard/*.rds` layouts. For the 56-dataset benchmark scripts, `scripts/convert_spotless_data.R` uses the `rep1` file from each `silver_standard_<dataset>-<pattern>/` directory and writes it as `converted/silver_<dataset>_<pattern>_*`.
 
 Use `bash scripts/validate_data.sh ./data/spotless` to verify this structure after extraction.
 

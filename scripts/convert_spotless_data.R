@@ -2,8 +2,8 @@
 #
 # Convert Spotless Benchmark RDS files to MTX format for FlashDeconv
 #
-# This script converts the Seurat objects from the Spotless benchmark
-# into a format that can be read by Python scripts.
+# This script converts Spotless benchmark RDS files into a format that
+# can be read by the Python benchmark scripts.
 #
 # Usage:
 #     Rscript convert_spotless_data.R [DATA_DIR]
@@ -19,12 +19,19 @@ library(Matrix)
 
 args <- commandArgs(trailingOnly = TRUE)
 data_dir <- if (length(args) > 0) args[1] else "./data/spotless"
+input_dir <- data_dir
+
+if (!dir.exists(file.path(input_dir, "reference")) &&
+        dir.exists(file.path(input_dir, "standards", "reference"))) {
+    input_dir <- file.path(input_dir, "standards")
+}
+
 output_dir <- file.path(data_dir, "converted")
 dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
 
 cat(strrep("=", 60), "\n")
 cat("Converting Spotless Benchmark Data\n")
-cat("Input directory:", data_dir, "\n")
+cat("Input directory:", input_dir, "\n")
 cat("Output directory:", output_dir, "\n")
 cat(strrep("=", 60), "\n\n")
 
@@ -35,13 +42,24 @@ skipped <- character(0)
 # ============================================================
 # Helper function to save Seurat object
 # ============================================================
-save_seurat <- function(obj, prefix, is_spatial = FALSE) {
-    # Get counts
-    counts <- tryCatch({
+get_counts <- function(obj) {
+    tryCatch({
         GetAssayData(obj, layer = "counts")
     }, error = function(e) {
         GetAssayData(obj, slot = "counts")
     })
+}
+
+as_sparse_matrix <- function(counts) {
+    if (inherits(counts, "Matrix")) {
+        return(counts)
+    }
+    Matrix(counts, sparse = TRUE)
+}
+
+save_seurat <- function(obj, prefix, is_spatial = FALSE) {
+    # Get counts
+    counts <- get_counts(obj)
 
     genes <- rownames(obj)
 
@@ -104,6 +122,102 @@ save_seurat <- function(obj, prefix, is_spatial = FALSE) {
     writeLines(genes, paste0(prefix, "_genes.txt"))
 }
 
+extract_rep_id <- function(path) {
+    match <- regexec("_rep([0-9]+)\\.rds$", basename(path))
+    parts <- regmatches(basename(path), match)[[1]]
+    if (length(parts) >= 2) {
+        return(as.integer(parts[2]))
+    }
+    NA_integer_
+}
+
+sort_rds_files <- function(files) {
+    reps <- vapply(files, extract_rep_id, integer(1))
+    files[order(ifelse(is.na(reps), .Machine$integer.max, reps), basename(files))]
+}
+
+select_representative_rds <- function(files) {
+    files <- sort_rds_files(files)
+    reps <- vapply(files, extract_rep_id, integer(1))
+    rep1_idx <- which(reps == 1)
+    if (length(rep1_idx) > 0) {
+        return(files[rep1_idx[1]])
+    }
+    files[1]
+}
+
+find_silver_test_files <- function(ds_id, dataset_name, pattern_id) {
+    legacy_file <- file.path(
+        input_dir,
+        "test_silver_standard",
+        paste0("silver_standard_", ds_id, "_", dataset_name, "_", pattern_id, ".rds")
+    )
+
+    if (file.exists(legacy_file)) {
+        return(legacy_file)
+    }
+
+    pattern_dir <- paste0("silver_standard_", ds_id, "-", pattern_id)
+    search_dirs <- c(
+        file.path(input_dir, pattern_dir),
+        file.path(input_dir, "test_silver_standard", pattern_dir)
+    )
+
+    files <- character(0)
+    for (dir in search_dirs) {
+        if (dir.exists(dir)) {
+            files <- c(files, list.files(dir, pattern = "\\.rds$", full.names = TRUE))
+        }
+    }
+
+    sort_rds_files(unique(files))
+}
+
+convert_silver_test <- function(rds_file, prefix) {
+    test <- readRDS(rds_file)
+
+    if (is.list(test) &&
+            all(c("counts", "relative_spot_composition") %in% names(test))) {
+        counts <- as_sparse_matrix(test$counts)
+        genes <- rownames(counts)
+        spots <- colnames(counts)
+        proportions <- as.data.frame(test$relative_spot_composition)
+        prop_cols <- setdiff(colnames(proportions), c("name", "region", "spot_no"))
+        proportions <- proportions[, prop_cols, drop = FALSE]
+
+        # Synthspot counts are genes x spots. Keep that orientation because
+        # the Python benchmark loaders transpose MTX files to spots x genes.
+        writeMM(counts, paste0(prefix, "_counts.mtx"))
+        writeLines(genes, paste0(prefix, "_genes.txt"))
+        if (!is.null(spots)) {
+            writeLines(spots, paste0(prefix, "_spots.txt"))
+        }
+        write.csv(proportions, paste0(prefix, "_proportions.csv"))
+
+        return(list(spots = ncol(counts), genes = nrow(counts)))
+    }
+
+    counts <- get_counts(test)
+    genes <- rownames(test)
+
+    prop_cols <- grep("^prob_", colnames(test@meta.data), value = TRUE)
+    if (length(prop_cols) == 0) {
+        prop_cols <- setdiff(colnames(test@meta.data),
+            c("nCount_RNA", "nFeature_RNA", "orig.ident"))
+    }
+
+    proportions <- test@meta.data[, prop_cols, drop = FALSE]
+    colnames(proportions) <- gsub("^prob_", "", colnames(proportions))
+
+    # Seurat counts are also genes x spots.
+    writeMM(counts, paste0(prefix, "_counts.mtx"))
+    writeLines(genes, paste0(prefix, "_genes.txt"))
+    writeLines(colnames(test), paste0(prefix, "_spots.txt"))
+    write.csv(proportions, paste0(prefix, "_proportions.csv"))
+
+    list(spots = ncol(test), genes = nrow(test))
+}
+
 # ============================================================
 # 1. Convert Silver Standard References
 # ============================================================
@@ -118,7 +232,7 @@ silver_refs <- list(
     "6" = "silver_standard_6_scc_p5"
 )
 
-ref_dir <- file.path(data_dir, "reference")
+ref_dir <- file.path(input_dir, "reference")
 
 for (id in names(silver_refs)) {
     name <- silver_refs[[id]]
@@ -143,8 +257,6 @@ for (id in names(silver_refs)) {
 # ============================================================
 cat("\n=== Converting Silver Standard Test Datasets ===\n")
 
-test_dir <- file.path(data_dir, "test_silver_standard")
-
 silver_tests <- list(
     "1" = list(name = "brain_cortex", patterns = 11),
     "2" = list(name = "cerebellum_cell", patterns = 9),
@@ -159,42 +271,19 @@ for (ds_id in names(silver_tests)) {
     cat("  Dataset", ds_id, ":", info$name, "\n")
 
     for (pattern_id in 1:info$patterns) {
-        rds_file <- file.path(test_dir,
-            paste0("silver_standard_", ds_id, "_", info$name, "_", pattern_id, ".rds"))
+        rds_files <- find_silver_test_files(ds_id, info$name, pattern_id)
 
-        if (!file.exists(rds_file)) {
+        if (length(rds_files) == 0) {
             skipped <<- c(skipped, paste0("silver_", ds_id, "_", pattern_id))
             next
         }
 
-        test <- readRDS(rds_file)
-
-        # Get counts and proportions
-        counts <- tryCatch({
-            GetAssayData(test, layer = "counts")
-        }, error = function(e) {
-            GetAssayData(test, slot = "counts")
-        })
-
-        genes <- rownames(test)
-
-        # Get proportions from metadata
-        prop_cols <- grep("^prob_", colnames(test@meta.data), value = TRUE)
-        if (length(prop_cols) == 0) {
-            prop_cols <- setdiff(colnames(test@meta.data),
-                c("nCount_RNA", "nFeature_RNA", "orig.ident"))
-        }
-
-        proportions <- test@meta.data[, prop_cols, drop = FALSE]
-        colnames(proportions) <- gsub("^prob_", "", colnames(proportions))
-
-        # Save
+        rds_file <- select_representative_rds(rds_files)
         prefix <- file.path(output_dir, paste0("silver_", ds_id, "_", pattern_id))
-        writeMM(t(counts), paste0(prefix, "_counts.mtx"))  # spots x genes
-        writeLines(genes, paste0(prefix, "_genes.txt"))
-        write.csv(proportions, paste0(prefix, "_proportions.csv"))
+        stats <- convert_silver_test(rds_file, prefix)
 
-        cat("    Pattern", pattern_id, ": spots=", ncol(test), "\n")
+        cat("    Pattern", pattern_id, ": using", basename(rds_file),
+            "spots=", stats$spots, "genes=", stats$genes, "\n")
         converted <<- c(converted, paste0("silver_", ds_id, "_", pattern_id))
     }
 }
@@ -204,7 +293,7 @@ for (ds_id in names(silver_tests)) {
 # ============================================================
 cat("\n=== Converting Liver Case Study ===\n")
 
-liver_dir <- file.path(data_dir, "liver")
+liver_dir <- file.path(input_dir, "liver")
 
 # Reference
 liver_ref_file <- file.path(liver_dir, "liver_mouseStSt_9celltypes.rds")
@@ -242,7 +331,7 @@ for (sample_id in c("JB01", "JB02", "JB03", "JB04")) {
 # ============================================================
 cat("\n=== Converting Melanoma Case Study ===\n")
 
-melanoma_dir <- file.path(data_dir, "melanoma")
+melanoma_dir <- file.path(input_dir, "melanoma")
 
 # Reference
 melanoma_ref_file <- file.path(melanoma_dir, "melanoma_scrna_ref.rds")
@@ -330,7 +419,7 @@ convert_gold_standard <- function(rds_file, output_dir) {
 gold_dirs <- c("gold_standard_1", "gold_standard_2", "gold_standard_3")
 
 for (gold_dir in gold_dirs) {
-    gold_path <- file.path(data_dir, gold_dir)
+    gold_path <- file.path(input_dir, gold_dir)
     if (dir.exists(gold_path)) {
         rds_files <- list.files(gold_path, pattern = "\\.rds$", full.names = TRUE)
         cat("  Found", length(rds_files), "files in", gold_dir, "\n")
@@ -360,10 +449,9 @@ if (length(skipped) > 0) {
     }
     cat("\nIf many datasets are skipped, the tarball may have extracted")
     cat("\nwith a top-level directory. Check:\n")
-    cat("  ls", data_dir, "\n")
-    cat("If you see a 'standards/' or similar subdirectory, move its\n")
-    cat("contents up and re-run this script:\n")
-    cat("  mv", file.path(data_dir, "standards/*"), data_dir, "\n")
+    cat("  ls", input_dir, "\n")
+    cat("The converter also supports archives extracted under a top-level\n")
+    cat("'standards/' directory, so moving files is usually not required.\n")
 }
 
 # Expected counts for validation

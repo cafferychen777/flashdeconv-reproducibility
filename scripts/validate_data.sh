@@ -11,13 +11,19 @@
 set -euo pipefail
 
 DATA_DIR="${1:-./data/spotless}"
+INPUT_DIR="$DATA_DIR"
 CONVERTED_DIR="$DATA_DIR/converted"
 ERRORS=0
 WARNINGS=0
 
+if [ ! -d "$INPUT_DIR/reference" ] && [ -d "$INPUT_DIR/standards/reference" ]; then
+    INPUT_DIR="$INPUT_DIR/standards"
+fi
+
 echo "============================================================"
 echo "Validating Spotless Benchmark Data"
 echo "Data directory: $DATA_DIR"
+echo "Raw data directory: $INPUT_DIR"
 echo "============================================================"
 
 # --- Phase 1: Check raw RDS directories ---
@@ -31,14 +37,42 @@ check_rds_dir() {
     local expected_min="$2"
     local label="$3"
 
-    if [ ! -d "$DATA_DIR/$dir" ]; then
+    if [ ! -d "$INPUT_DIR/$dir" ]; then
         echo "  FAIL  $label: directory $dir/ not found"
         ERRORS=$((ERRORS + 1))
         return
     fi
 
     local count
-    count=$(find "$DATA_DIR/$dir" -name "*.rds" 2>/dev/null | wc -l | tr -d ' ')
+    count=$(find "$INPUT_DIR/$dir" -name "*.rds" 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$count" -lt "$expected_min" ]; then
+        echo "  WARN  $label: found $count RDS files (expected >= $expected_min)"
+        WARNINGS=$((WARNINGS + 1))
+    else
+        echo "  OK    $label: $count RDS files"
+    fi
+}
+
+check_silver_tests() {
+    local expected_min="$1"
+    local label="$2"
+    local count=0
+    local current_count=0
+    local legacy_count=0
+
+    if [ -d "$INPUT_DIR/test_silver_standard" ]; then
+        legacy_count=$(find "$INPUT_DIR/test_silver_standard" -maxdepth 1 -name "*.rds" 2>/dev/null | wc -l | tr -d ' ')
+    fi
+
+    for root in "$INPUT_DIR" "$INPUT_DIR/test_silver_standard"; do
+        if [ -d "$root" ]; then
+            current_count=$(find "$root" -mindepth 2 -maxdepth 2 -type f -path "*/silver_standard_*-*/*.rds" 2>/dev/null | wc -l | tr -d ' ')
+            count=$((count + current_count))
+        fi
+    done
+
+    count=$((count + legacy_count))
+
     if [ "$count" -lt "$expected_min" ]; then
         echo "  WARN  $label: found $count RDS files (expected >= $expected_min)"
         WARNINGS=$((WARNINGS + 1))
@@ -48,7 +82,7 @@ check_rds_dir() {
 }
 
 check_rds_dir "reference"            6  "Silver Standard references"
-check_rds_dir "test_silver_standard" 56 "Silver Standard test datasets"
+check_silver_tests                  56 "Silver Standard test datasets"
 check_rds_dir "gold_standard_1"      1  "Gold Standard 1 (seqFISH+ cortex)"
 check_rds_dir "gold_standard_2"      1  "Gold Standard 2 (seqFISH+ OB)"
 check_rds_dir "gold_standard_3"      1  "Gold Standard 3 (STARMap)"
