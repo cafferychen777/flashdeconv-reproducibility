@@ -1,12 +1,5 @@
-numpy>=1.26,<2.4
-pandas
-matplotlib
-scipy
+-r requirements.txt
 nbformat
 nbclient
 ipykernel
 notebook
-scanpy
-anndata
-pyarrow
-flashdeconv

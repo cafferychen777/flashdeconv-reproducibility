@@ -41,8 +41,6 @@ import os
 import urllib.request
 from pathlib import Path
 
-import scanpy as sc
-
 
 # Zenodo URLs for Haber et al. data (processed by Besca)
 ZENODO_RAW_URL = "https://zenodo.org/records/4447233/files/haber_raw.h5ad?download=1"
@@ -81,6 +79,7 @@ def prepare_reference(
     We combine them to get raw counts with cell type annotations.
     """
     print("\n[2/3] Preparing reference data...")
+    import scanpy as sc
 
     # Load processed data (has cell type annotations)
     print("  Loading processed data (for cell type annotations)...")

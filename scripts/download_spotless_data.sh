@@ -121,7 +121,20 @@ check_dir() {
 }
 
 check_dir "reference"
-check_dir "test_silver_standard"
+
+silver_count=0
+if [ -d "$OUTPUT_DIR/test_silver_standard" ]; then
+    legacy_count=$(find "$OUTPUT_DIR/test_silver_standard" -maxdepth 1 -name "*.rds" 2>/dev/null | wc -l | tr -d ' ')
+    silver_count=$((silver_count + legacy_count))
+fi
+current_count=$(find "$OUTPUT_DIR" -mindepth 2 -maxdepth 2 -type f -path "*/silver_standard_*-*/*.rds" 2>/dev/null | wc -l | tr -d ' ')
+silver_count=$((silver_count + current_count))
+if [ "$silver_count" -ge 56 ]; then
+    echo "  OK  Silver Standard test datasets ($silver_count RDS files)"
+else
+    echo "  MISSING  Silver Standard test datasets (found $silver_count RDS files)"
+    ERRORS=$((ERRORS + 1))
+fi
 check_dir "gold_standard_1"
 check_dir "gold_standard_2"
 check_dir "gold_standard_3"

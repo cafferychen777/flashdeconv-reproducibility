@@ -37,8 +37,6 @@ import time
 import warnings
 warnings.filterwarnings('ignore')
 
-from flashdeconv import FlashDeconv
-
 
 # 9 cell types used in benchmark
 CELLTYPES = [
@@ -148,6 +146,8 @@ def calculate_aupr(y_true, y_score):
 
 def run_benchmark(data_dir, output_dir):
     """Run FlashDeconv benchmark on liver data."""
+    from flashdeconv import FlashDeconv
+
     print("=" * 60)
     print("Liver Case Study Benchmark")
     print("=" * 60)

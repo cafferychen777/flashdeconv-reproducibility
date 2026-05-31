@@ -128,7 +128,7 @@ def find_hidden_genes(X: np.ndarray, gene_names: list[str], top_n: int = 50) -> 
 def load_intestine_reference(data_dir: str | Path):
     """Load Haber intestine reference and return (adata, cell_type_column)."""
     data_dir = Path(data_dir)
-    for ref_name in ["haber_intestine_matched.h5ad", "haber_processed.h5ad"]:
+    for ref_name in ["haber_intestine_matched.h5ad", "haber_intestine_reference.h5ad", "haber_processed.h5ad"]:
         ref_path = data_dir / ref_name
         if ref_path.exists():
             import scanpy as sc
@@ -138,31 +138,53 @@ def load_intestine_reference(data_dir: str | Path):
             ct_col = "celltype1" if "celltype1" in ref.obs else "cell_type"
             return ref, ct_col
     raise FileNotFoundError(
-        f"No Haber reference found in {data_dir}. Expected haber_intestine_matched.h5ad "
-        "or haber_processed.h5ad."
+        f"No Haber reference found in {data_dir}. Expected haber_intestine_matched.h5ad, "
+        "haber_intestine_reference.h5ad, or haber_processed.h5ad."
     )
 
 
 def load_mouse_brain_reference(data_dir: str | Path):
     """Load Cell2location mouse brain scRNA-seq reference with annotations."""
+    data_path = Path(data_dir) / "mouse_brain"
+    ref_path = data_path / "scrna_reference.h5ad"
+    if not ref_path.exists():
+        raise FileNotFoundError(
+            f"Missing Cell2location reference: {ref_path}\n"
+            "Run:\n  bash scripts/download_cell2location_data.sh ./data/mouse_brain"
+        )
+
     import scanpy as sc
 
-    data_path = Path(data_dir) / "mouse_brain"
-    sc_adata = sc.read_h5ad(data_path / "scrna_reference.h5ad")
-    anno = pd.read_csv(data_path / "cell_annotation.csv", index_col=0)
+    sc_adata = sc.read_h5ad(ref_path)
 
-    common_cells = sc_adata.obs_names.intersection(anno.index)
-    sc_adata = sc_adata[common_cells].copy()
-    sc_adata.obs["cell_type"] = anno.loc[sc_adata.obs_names, "annotation_1"].values
+    anno_path = data_path / "cell_annotation.csv"
+    if anno_path.exists():
+        anno = pd.read_csv(anno_path, index_col=0)
+        if "annotation_1" not in anno:
+            raise KeyError(f"{anno_path} is missing required column 'annotation_1'.")
+        common_cells = sc_adata.obs_names.intersection(anno.index)
+        sc_adata = sc_adata[common_cells].copy()
+        sc_adata.obs["cell_type"] = anno.loc[sc_adata.obs_names, "annotation_1"].values
+    elif "annotation_1" in sc_adata.obs:
+        sc_adata = sc_adata[~sc_adata.obs["annotation_1"].isna()].copy()
+        sc_adata.obs["cell_type"] = sc_adata.obs["annotation_1"].astype(str).values
+    else:
+        raise FileNotFoundError(
+            f"Missing {anno_path}, and scrna_reference.h5ad has no obs['annotation_1'] column."
+        )
     return sc_adata
 
 
 def load_cortex_paired_data(data_dir: str | Path):
     """Load Cell2location paired mouse brain Visium and scRNA-seq data."""
-    import scanpy as sc
-
     data_path = Path(data_dir) / "mouse_brain"
     sc_adata = load_mouse_brain_reference(data_dir)
+
+    if "SYMBOL" not in sc_adata.var:
+        raise KeyError(
+            "scrna_reference.h5ad is missing var['SYMBOL']; "
+            "use scripts/download_cell2location_data.sh."
+        )
 
     symbols = sc_adata.var["SYMBOL"].astype(str).values
     has_symbol = (symbols != "") & (symbols != "nan") & (symbols != "None")
@@ -175,12 +197,34 @@ def load_cortex_paired_data(data_dir: str | Path):
         name_counts[name] += 1
     sc_adata.var_names = pd.Index(unique_names)
 
-    st_path = data_path / "C2L" / "ST" / "48"
-    sp_adata = sc.read_10x_h5(st_path / "ST8059048_filtered_feature_bc_matrix.h5")
+    candidate_st_paths = [
+        data_path / "C2L" / "ST" / "48",
+        data_path / "mouse_brain_visium_wo_cloupe_data" / "rawdata" / "ST8059048",
+    ]
+    st_path = next((path for path in candidate_st_paths if path.exists()), candidate_st_paths[0])
+    matrix_path = st_path / "ST8059048_filtered_feature_bc_matrix.h5"
+    if not matrix_path.exists():
+        matrix_path = st_path / "filtered_feature_bc_matrix.h5"
+    positions_path = st_path / "spatial" / "tissue_positions_list.csv"
+    missing = [path for path in [matrix_path, positions_path] if not path.exists()]
+    if missing:
+        expected = "\n  - ".join(str(path) for path in candidate_st_paths)
+        missing_text = "\n  - ".join(str(path) for path in missing)
+        raise FileNotFoundError(
+            "Missing Cell2location spatial inputs:\n"
+            f"  - {missing_text}\n"
+            "Expected one of these ST8059048 layouts:\n"
+            f"  - {expected}\n"
+            "Run:\n  bash scripts/download_cell2location_data.sh ./data/mouse_brain"
+        )
+
+    import scanpy as sc
+
+    sp_adata = sc.read_10x_h5(matrix_path)
     sp_adata.var_names_make_unique()
 
     coords_df = pd.read_csv(
-        st_path / "spatial" / "tissue_positions_list.csv",
+        positions_path,
         header=None,
         index_col=0,
     )
@@ -191,6 +235,8 @@ def load_cortex_paired_data(data_dir: str | Path):
     sp_adata.obsm["spatial"] = coords_df.loc[sp_adata.obs_names, ["pxl_row", "pxl_col"]].values
 
     common_genes = sc_adata.var_names.intersection(sp_adata.var_names)
+    if len(common_genes) == 0:
+        raise ValueError("No shared genes found between Cell2location scRNA and Visium inputs.")
     sc_adata = sc_adata[:, common_genes].copy()
     sp_adata = sp_adata[:, common_genes].copy()
     return sc_adata, sp_adata, common_genes

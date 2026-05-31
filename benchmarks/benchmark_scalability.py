@@ -30,8 +30,6 @@ from scipy.stats import pearsonr
 import warnings
 warnings.filterwarnings('ignore')
 
-from flashdeconv import FlashDeconv
-
 # Try to import psutil for memory monitoring
 try:
     import psutil
@@ -141,6 +139,7 @@ def generate_spatial_data(ref, n_spots, seed=None):
 
 def run_single_benchmark(n_spots, n_genes=2000, n_types=10):
     """Run FlashDeconv benchmark at given scale."""
+    from flashdeconv import FlashDeconv
 
     gc.collect()
     baseline_mem = get_memory_mb()

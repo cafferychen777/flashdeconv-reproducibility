@@ -9,8 +9,10 @@ This repository contains code and data links for reproducing the results in the 
 ## Quick Start
 
 ```bash
-# 1. Install FlashDeconv
-pip install flashdeconv
+# 1. Create a reproducible environment
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 
 # 2. Download benchmark data (requires ~13 GB)
 bash scripts/download_spotless_data.sh ./data/spotless
@@ -43,6 +45,7 @@ pip install -r requirements-notebooks.txt
 
 # Fast synthetic/data-check path
 export FD_REPRO_MODE=smoke
+python scripts/run_notebook_smoke.py
 jupyter notebook notebooks/
 
 # Full-data path after completing the data preparation steps below
@@ -60,6 +63,11 @@ benchmarks are better run as CLI jobs and inspected from their CSV outputs.
 ```
 flashdeconv-reproducibility/
 ├── README.md                           # This file
+├── LICENSE                             # GPL-3.0-only license notice
+├── requirements.txt                    # Reproducible Python runtime constraints
+├── requirements-notebooks.txt          # Notebook runtime additions
+├── environment.yml                     # Conda environment alternative
+├── repro_manifest.yml                  # Commands and expected artifacts
 ├── benchmarks/                         # Benchmark scripts
 │   ├── benchmark_silver_standards.py   # Silver Standard (56 synthetic datasets)
 │   ├── benchmark_gold_standard.py      # Gold Standard (STARMap + seqFISH+)
@@ -83,6 +91,8 @@ flashdeconv-reproducibility/
 │   ├── convert_spotless_data.R         # Convert RDS to MTX format
 │   ├── validate_data.sh               # Validate downloaded/converted data
 │   ├── download_visium_hd_data.sh      # Download Visium HD data
+│   ├── download_cell2location_data.sh  # Download Cell2location mouse brain data
+│   ├── run_notebook_smoke.py           # Execute notebook smoke checks
 │   └── prepare_haber_reference.py      # Prepare Haber et al. reference
 └── results/                            # Output directory for results
 ```
@@ -92,7 +102,7 @@ flashdeconv-reproducibility/
 The FlashDeconv software package is available at: https://github.com/cafferychen777/flashdeconv
 
 ```bash
-pip install flashdeconv
+pip install -r requirements.txt
 ```
 
 ## Data Sources
@@ -197,10 +207,11 @@ Used for cortical lamination validation.
 | **Data Portal** | [cell2location.cog.sanger.ac.uk](https://cell2location.cog.sanger.ac.uk/tutorial/) |
 | **ArrayExpress** | [E-MTAB-11114](https://www.ebi.ac.uk/biostudies/arrayexpress/studies/E-MTAB-11114) (Visium), [E-MTAB-11115](https://www.ebi.ac.uk/biostudies/arrayexpress/studies/E-MTAB-11115) (snRNA-seq) |
 
+Use the repository downloader so the files land in the paths expected by the
+analysis loaders:
+
 ```bash
-# Download pre-processed tutorial data
-curl -O https://cell2location.cog.sanger.ac.uk/tutorial/mouse_brain_visium_wo_cloupe_data.zip
-curl -O https://cell2location.cog.sanger.ac.uk/tutorial/mouse_brain_snrna/regression_model/RegressionGeneBackgroundCoverageTorch_65covariates_40532cells_12819genes/sc.h5ad
+bash scripts/download_cell2location_data.sh ./data/mouse_brain
 ```
 
 ---
@@ -227,7 +238,11 @@ curl -L -o haber_processed.h5ad "https://zenodo.org/records/4447233/files/haber_
 
 ```bash
 # Python dependencies
-pip install flashdeconv scanpy anndata pandas matplotlib seaborn psutil
+pip install -r requirements.txt
+
+# Alternative conda environment
+conda env create -f environment.yml
+conda activate flashdeconv-reproducibility
 
 # R dependencies (for data conversion)
 R -e "install.packages(c('Seurat', 'Matrix'))"
@@ -301,8 +316,15 @@ bash scripts/download_visium_hd_data.sh ./data
 
 ```bash
 # Prepare Haber et al. reference with cell type annotations
-python scripts/prepare_haber_reference.py --data-dir ./data --output ./data/haber_intestine_reference.h5ad
+python scripts/prepare_haber_reference.py \
+    --data-dir ./data \
+    --output ./data/haber_intestine_reference.h5ad
 ```
+
+This step is optional when `haber_processed.h5ad` from
+`download_visium_hd_data.sh` is present. The analysis loaders accept
+`haber_intestine_reference.h5ad`, `haber_intestine_matched.h5ad`, or
+`haber_processed.h5ad`.
 
 #### Step 3: Run Analysis
 
@@ -312,6 +334,11 @@ python analysis/resolution_horizon_analysis.py \
     --data_dir ./data \
     --output_dir ./results \
     --bins 16,32,64,128
+
+# Generate Tuft/stem visibility and colocalization intermediates
+python analysis/tuft_stem_discovery.py \
+    --data_dir ./data \
+    --output_dir ./results
 
 # Generate Figure 7: Tuft-Stem discovery
 python figures/main/figure7_tuft_discovery.py \
@@ -327,22 +354,12 @@ This analysis validates FlashDeconv using Cell2location's paired mouse brain dat
 
 ```bash
 # Download Cell2location mouse brain data
-mkdir -p ./data/mouse_brain/C2L/ST/48/spatial
-cd ./data/mouse_brain
-
-# scRNA-seq reference
-curl -o scrna_reference.h5ad https://cell2location.cog.sanger.ac.uk/tutorial/mouse_brain_snrna/regression_model/RegressionGeneBackgroundCoverageTorch_65covariates_40532cells_12819genes/sc.h5ad
-
-# Cell annotation
-curl -o cell_annotation.csv https://cell2location.cog.sanger.ac.uk/tutorial/mouse_brain_snrna_sc_adata_annotation.csv
-
-# Visium data (ST8059048)
-cd C2L/ST/48
-curl -o ST8059048_filtered_feature_bc_matrix.h5 "https://cell2location.cog.sanger.ac.uk/tutorial/ST/ST8059048/filtered_feature_bc_matrix.h5"
-cd spatial
-curl -o tissue_positions_list.csv "https://cell2location.cog.sanger.ac.uk/tutorial/ST/ST8059048/spatial/tissue_positions_list.csv"
-cd ../../../../..
+bash scripts/download_cell2location_data.sh ./data/mouse_brain
 ```
+
+This uses the current Cell2location tutorial data portal: the regression-model
+`sc.h5ad` reference and the `mouse_brain_visium_wo_cloupe_data.zip` archive.
+The loader also remains compatible with the older flat `C2L/ST/48/` layout.
 
 #### Step 2: Run Analysis
 
@@ -363,6 +380,9 @@ python figures/main/figure5_cortex_lamination.py \
 This analysis demonstrates how leverage scores decouple biological identity from population abundance.
 
 ```bash
+# Download Cell2location data if Part 3 was not run
+bash scripts/download_cell2location_data.sh ./data/mouse_brain
+
 # Run leverage analysis
 python analysis/leverage_deep_dive.py \
     --data_dir ./data \
@@ -386,7 +406,11 @@ If `convert_spotless_data.R` reports many `[SKIP]` messages, the tarballs likely
 ls ./data/spotless/
 ```
 
-If you see a `standards/` subdirectory instead of `reference/` and `test_silver_standard/`, move its contents up:
+The converter and validator understand the current Zenodo layout both at the
+root and under a top-level `standards/` directory. Only move files manually if
+you have inspected the archive and confirmed the expected `reference/`,
+`silver_standard_<dataset>-<pattern>/`, and `gold_standard_*` directories are
+one level deeper than the path passed to the scripts:
 
 ```bash
 mv ./data/spotless/standards/* ./data/spotless/
@@ -432,7 +456,7 @@ If you use FlashDeconv or this reproducibility code, please cite:
 
 ## License
 
-- **Code**: GPL-3.0
+- **Code**: GPL-3.0-only
 - **Data**: See individual dataset licenses above
 
 ## References

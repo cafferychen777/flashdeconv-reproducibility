@@ -84,5 +84,5 @@ ls -lh "$DATA_DIR"/*.h5ad 2>/dev/null || true
 ls -ld "$DATA_DIR"/Visium_HD_* 2>/dev/null || true
 echo ""
 echo "Next steps:"
-echo "1. Run: python scripts/prepare_haber_reference.py --data_dir $DATA_DIR"
+echo "1. Optional: python scripts/prepare_haber_reference.py --data-dir $DATA_DIR --output $DATA_DIR/haber_intestine_reference.h5ad"
 echo "2. Run: python analysis/resolution_horizon_analysis.py --data_dir $DATA_DIR"

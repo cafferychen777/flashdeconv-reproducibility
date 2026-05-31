@@ -9,7 +9,9 @@ tables, and figure previews easier to inspect.
 By default notebooks run in smoke mode:
 
 ```bash
+pip install -r requirements-notebooks.txt
 export FD_REPRO_MODE=smoke
+python scripts/run_notebook_smoke.py
 ```
 
 Smoke mode uses small synthetic data or already materialized summaries so the

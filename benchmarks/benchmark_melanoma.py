@@ -29,8 +29,6 @@ from scipy.spatial.distance import jensenshannon
 import warnings
 warnings.filterwarnings('ignore')
 
-from flashdeconv import FlashDeconv
-
 
 # Cell type mapping: raw -> aggregated
 CELLTYPE_MAP = {
@@ -149,6 +147,8 @@ def calculate_jsd(props_true, props_pred):
 
 def run_benchmark(data_dir, output_dir):
     """Run FlashDeconv benchmark on melanoma data."""
+    from flashdeconv import FlashDeconv
+
     print("=" * 60)
     print("Melanoma Case Study Benchmark")
     print("=" * 60)

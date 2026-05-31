@@ -1,0 +1,39 @@
+name: Reproducibility smoke
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: "release"
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-notebooks.txt
+      - name: Static checks
+        run: |
+          python -m compileall repro analysis benchmarks figures/main scripts
+          bash -n scripts/download_spotless_data.sh scripts/download_visium_hd_data.sh scripts/download_cell2location_data.sh scripts/validate_data.sh
+          Rscript -e "invisible(parse(file='scripts/convert_spotless_data.R')); cat('R parse OK\n')"
+      - name: CLI help
+        run: |
+          for f in analysis/*.py benchmarks/*.py figures/main/*.py scripts/prepare_haber_reference.py; do
+            python "$f" --help >/tmp/help.out
+          done
+      - name: Notebook smoke
+        env:
+          FD_REPRO_MODE: smoke
+          FD_DATA_DIR: ${{ runner.temp }}/fd-data
+          FD_RESULTS_DIR: ${{ runner.temp }}/fd-results
+        run: |
+          python scripts/run_notebook_smoke.py

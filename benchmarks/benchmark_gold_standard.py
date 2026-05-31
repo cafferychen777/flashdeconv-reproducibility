@@ -34,8 +34,6 @@ from sklearn.metrics import precision_recall_curve, auc
 import warnings
 warnings.filterwarnings('ignore')
 
-from flashdeconv import FlashDeconv
-
 
 def load_reference(prefix):
     """Load converted reference data."""
@@ -161,6 +159,7 @@ def calculate_metrics(pred, true):
 
 def run_benchmark(data_dir, output_dir):
     """Run benchmark on Gold Standard datasets."""
+    from flashdeconv import FlashDeconv
 
     ref_mapping = {
         'cortex_svz': 'gold_ref_1',  # seqFISH+ cortex
