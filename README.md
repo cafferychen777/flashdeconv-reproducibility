@@ -32,6 +32,29 @@ python benchmarks/benchmark_melanoma.py --data_dir ./data/spotless/converted
 python benchmarks/benchmark_scalability.py --output_dir ./results
 ```
 
+## Notebook Reproducibility Layer
+
+The command-line scripts remain the canonical full reproduction path. For
+interactive inspection of the main narrative analyses, this repository also
+provides Jupyter notebooks under `notebooks/`.
+
+```bash
+pip install -r requirements-notebooks.txt
+
+# Fast synthetic/data-check path
+export FD_REPRO_MODE=smoke
+jupyter notebook notebooks/
+
+# Full-data path after completing the data preparation steps below
+export FD_REPRO_MODE=full
+export FD_DATA_DIR=./data
+export FD_RESULTS_DIR=./results
+```
+
+The first notebook release covers Visium HD/tuft discovery, cortex lamination,
+and the leverage-score mechanism. Benchmark notebooks are intentionally deferred:
+benchmarks are better run as CLI jobs and inspected from their CSV outputs.
+
 ## Repository Structure
 
 ```
@@ -53,6 +76,8 @@ flashdeconv-reproducibility/
 │   │   ├── figure5_cortex_lamination.py
 │   │   └── figure7_tuft_discovery.py
 │   └── supplementary/                  # Supplementary figures
+├── notebooks/                          # Narrative smoke/full reproduction notebooks
+├── repro/                              # Shared helpers used by scripts and notebooks
 ├── scripts/                            # Data preparation scripts
 │   ├── download_spotless_data.sh       # Download Spotless data from Zenodo
 │   ├── convert_spotless_data.R         # Convert RDS to MTX format
