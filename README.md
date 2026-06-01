@@ -14,25 +14,46 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# 2. Download benchmark data (requires ~13 GB)
+# 2. Run the full Spotless benchmark (download, verify checksums, convert, run)
+make benchmark
+
+# 3. Or run everything (benchmark + analyses + figures)
+make all
+```
+
+The `make benchmark` target automates six steps: downloading 13 GB of archived
+benchmark data from Zenodo (record [10277187](https://zenodo.org/records/10277187)),
+verifying MD5 checksums against Zenodo-published values (pinned in
+`checksums/MD5SUMS`), converting RDS files to Python-readable MTX format,
+validating directory structure and file counts, and running all five benchmark
+scripts.  Individual steps can also be run separately:
+
+```bash
+make download          # Download + checksum verification
+make convert           # RDS → MTX conversion (requires R + Seurat)
+make validate          # Verify directory structure and file counts
+make benchmark-silver  # Silver Standard only (56 synthetic datasets)
+make benchmark-gold    # Gold Standard only (STARMap + seqFISH+)
+make benchmark-liver   # Liver case study only
+make benchmark-melanoma # Melanoma case study only
+```
+
+<details>
+<summary>Manual step-by-step (without Make)</summary>
+
+```bash
 bash scripts/download_spotless_data.sh ./data/spotless
-
-# 3. Validate the download (checks directory structure and file counts)
-bash scripts/validate_data.sh ./data/spotless
-
-# 4. Convert data to Python-readable format
+bash scripts/verify_checksums.sh ./data/spotless
 Rscript scripts/convert_spotless_data.R ./data/spotless
-
-# 5. Validate again (now checks converted files too)
 bash scripts/validate_data.sh ./data/spotless
-
-# 6. Run benchmarks
 python benchmarks/benchmark_silver_standards.py --data_dir ./data/spotless/converted
 python benchmarks/benchmark_gold_standard.py --data_dir ./data/spotless/converted
 python benchmarks/benchmark_liver.py --data_dir ./data/spotless/converted
 python benchmarks/benchmark_melanoma.py --data_dir ./data/spotless/converted
 python benchmarks/benchmark_scalability.py --output_dir ./results
 ```
+
+</details>
 
 ## Notebook Reproducibility Layer
 
@@ -67,7 +88,9 @@ flashdeconv-reproducibility/
 ├── requirements.txt                    # Reproducible Python runtime constraints
 ├── requirements-notebooks.txt          # Notebook runtime additions
 ├── environment.yml                     # Conda environment alternative
-├── repro_manifest.yml                  # Commands and expected artifacts
+├── Makefile                            # One-command reproduction (make benchmark)
+├── checksums/                          # Zenodo-published archive checksums
+│   └── MD5SUMS
 ├── benchmarks/                         # Benchmark scripts
 │   ├── benchmark_silver_standards.py   # Silver Standard (56 synthetic datasets)
 │   ├── benchmark_gold_standard.py      # Gold Standard (STARMap + seqFISH+)
@@ -90,6 +113,7 @@ flashdeconv-reproducibility/
 │   ├── download_spotless_data.sh       # Download Spotless data from Zenodo
 │   ├── convert_spotless_data.R         # Convert RDS to MTX format
 │   ├── validate_data.sh               # Validate downloaded/converted data
+│   ├── verify_checksums.sh            # MD5 verification against Zenodo
 │   ├── download_visium_hd_data.sh      # Download Visium HD data
 │   ├── download_cell2location_data.sh  # Download Cell2location mouse brain data
 │   ├── run_notebook_smoke.py           # Execute notebook smoke checks
@@ -104,6 +128,21 @@ The FlashDeconv software package is available at: https://github.com/cafferychen
 ```bash
 pip install -r requirements.txt
 ```
+
+## Data Integrity
+
+All download archives are verified against pinned checksums. The verification
+script (`scripts/verify_checksums.sh`) runs automatically during `make download`
+and prefers SHA-256 where available.
+
+| Archive | Size | SHA-256 |
+|---------|------|---------|
+| `standards.tar.gz` | 6.9 GB | `b1ca0a9cca550df5e5e165b88316bec35341baff770381e85643655a8a1d7a0a` |
+| `liver_datasets.tar.gz` | 4.5 GB | `d648bf88330b9a813571b7523a7100549d6a0bfd3e9336e2c8ca983b092b0b1f` |
+| `melanoma_datasets.tar.gz` | 1.3 GB | `e15313ff83e9e0b705e81bcde837de51b903c2f1d66824053a87074d2261bbf8` |
+
+Checksums are pinned in `checksums/SHA256SUMS` (independently computed) and
+`checksums/MD5SUMS` (from [Zenodo API, record 10277187](https://zenodo.org/api/records/10277187)).
 
 ## Data Sources
 

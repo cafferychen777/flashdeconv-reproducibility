@@ -23,8 +23,9 @@ jobs:
       - name: Static checks
         run: |
           python -m compileall repro analysis benchmarks figures/main scripts
-          bash -n scripts/download_spotless_data.sh scripts/download_visium_hd_data.sh scripts/download_cell2location_data.sh scripts/validate_data.sh
+          bash -n scripts/download_spotless_data.sh scripts/download_visium_hd_data.sh scripts/download_cell2location_data.sh scripts/validate_data.sh scripts/verify_checksums.sh
           Rscript -e "invisible(parse(file='scripts/convert_spotless_data.R')); cat('R parse OK\n')"
+          make -n benchmark   # dry-run: verify Makefile syntax and target graph
       - name: CLI help
         run: |
           for f in analysis/*.py benchmarks/*.py figures/main/*.py scripts/prepare_haber_reference.py; do

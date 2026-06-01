@@ -1,0 +1,9 @@
+# MD5 checksums for Spotless benchmark data (Zenodo record 10277187)
+# Source: https://zenodo.org/api/records/10277187
+# Verify with:  cd data/spotless && md5sum -c ../../checksums/MD5SUMS
+#
+# These checksums are published by Zenodo and ensure downloaded archives
+# match the deposited originals exactly.
+5021b79d59892de76bfb1cfdeae8a5e6  standards.tar.gz
+2bdfe7ecb171f287825dc7be6266dc54  liver_datasets.tar.gz
+d97de2bda56b197ab8444fd821ab77db  melanoma_datasets.tar.gz

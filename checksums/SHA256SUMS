@@ -1,0 +1,6 @@
+# SHA-256 checksums for Spotless benchmark data (Zenodo record 10277187)
+# Source: independently computed from Zenodo-hosted archives
+# Verify with:  cd data/spotless && shasum -a 256 -c ../../checksums/SHA256SUMS
+b1ca0a9cca550df5e5e165b88316bec35341baff770381e85643655a8a1d7a0a  standards.tar.gz
+d648bf88330b9a813571b7523a7100549d6a0bfd3e9336e2c8ca983b092b0b1f  liver_datasets.tar.gz
+e15313ff83e9e0b705e81bcde837de51b903c2f1d66824053a87074d2261bbf8  melanoma_datasets.tar.gz

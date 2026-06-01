@@ -157,6 +157,21 @@ else
     echo "All expected directories found."
 fi
 
+# --- Checksum verification ---
+
+echo ""
+echo "============================================================"
+echo "Verifying checksums against Zenodo-published MD5 values..."
+echo "============================================================"
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+VERIFY_SCRIPT="$SCRIPT_DIR/verify_checksums.sh"
+if [ -x "$VERIFY_SCRIPT" ]; then
+    bash "$VERIFY_SCRIPT" "$OUTPUT_DIR"
+else
+    echo "  SKIP  verify_checksums.sh not found; checksums not verified."
+fi
+
 echo ""
 echo "============================================================"
 echo "Done! Data is ready in: $OUTPUT_DIR"
