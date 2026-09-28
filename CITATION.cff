@@ -14,7 +14,7 @@ repository-code: "https://github.com/cafferychen777/flashdeconv-reproducibility"
 license: GPL-3.0-only
 preferred-citation:
   type: article
-  title: "FlashDeconv enables atlas-scale, multi-resolution spatial deconvolution via structure-preserving sketching"
+  title: "FlashDeconv reveals resolution horizons in atlas-scale spatial transcriptomics"
   authors:
     - family-names: "Yang"
       given-names: "Chen"
