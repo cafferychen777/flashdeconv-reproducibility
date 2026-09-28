@@ -1,0 +1,3 @@
+#!/bin/bash
+mkdir -p /Users/apple/Research/FlashDeconv/results/rerun_final/benchmarks/marker_scoring/final_default && cd /Users/apple/Research/FlashDeconv/validation/rerun_final/benchmarks/marker_scoring && FD_PROTOCOL=default FD_FITLOG=/Users/apple/Research/FlashDeconv/results/rerun_final/fitlogs/local_marker_scoring.csv FD_TAG=marker_scoring_seed42 RERUN_OUT=/Users/apple/Research/FlashDeconv/results/rerun_final/benchmarks/marker_scoring/final_default /Users/apple/Research/FlashDeconv/.venv/bin/python compare_marker_scoring_rerun.py > /Users/apple/Research/FlashDeconv/results/rerun_final/benchmarks/marker_scoring/final_default/log.txt 2>&1
+echo "job05 rc=$?" >> /Users/apple/Research/FlashDeconv/validation/rerun_final/benchmarks/jobs_local.done

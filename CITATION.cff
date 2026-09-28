@@ -1,7 +1,7 @@
 cff-version: 1.2.0
-message: "If you use this software, please cite it as below."
-type: article
-title: "FlashDeconv enables atlas-scale, multi-resolution spatial deconvolution via structure-preserving sketching"
+message: "If you use these scripts, please cite the FlashDeconv preprint below."
+type: software
+title: "Analysis and figure scripts for the FlashDeconv manuscript"
 authors:
   - family-names: "Yang"
     given-names: "Chen"
@@ -10,9 +10,32 @@ authors:
     given-names: "Jun"
   - family-names: "Zhang"
     given-names: "Xianyang"
-doi: "10.64898/2025.12.22.696108"
-url: "https://doi.org/10.64898/2025.12.22.696108"
 repository-code: "https://github.com/cafferychen777/flashdeconv-reproducibility"
 license: GPL-3.0-only
-year: 2025
-journal: "bioRxiv"
+preferred-citation:
+  type: article
+  title: "FlashDeconv enables atlas-scale, multi-resolution spatial deconvolution via structure-preserving sketching"
+  authors:
+    - family-names: "Yang"
+      given-names: "Chen"
+    - family-names: "Chen"
+      given-names: "Jun"
+    - family-names: "Zhang"
+      given-names: "Xianyang"
+  doi: "10.64898/2025.12.22.696108"
+  url: "https://doi.org/10.64898/2025.12.22.696108"
+  journal: "bioRxiv"
+  year: 2025
+references:
+  - type: software
+    title: "FlashDeconv"
+    version: 0.2.0
+    doi: "10.5281/zenodo.23006113"
+    repository-code: "https://github.com/cafferychen777/flashdeconv"
+    authors:
+      - family-names: "Yang"
+        given-names: "Chen"
+      - family-names: "Chen"
+        given-names: "Jun"
+      - family-names: "Zhang"
+        given-names: "Xianyang"

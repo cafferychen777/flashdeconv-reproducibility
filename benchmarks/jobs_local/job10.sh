@@ -1,0 +1,3 @@
+#!/bin/bash
+mkdir -p /Users/apple/Research/FlashDeconv/results/rerun_final/benchmarks/li2023/expected_seed42 && FD_SEED=42 FD_FITLOG=/Users/apple/Research/FlashDeconv/results/rerun_final/fitlogs/local_li2023_seed42.csv FD_TAG=li2023_seed42 RERUN_OUT=/Users/apple/Research/FlashDeconv/results/rerun_final/benchmarks/li2023/expected_seed42 /Users/apple/Research/FlashDeconv/.venv/bin/python /Users/apple/Research/FlashDeconv/validation/rerun_final/benchmarks/li2023/run_li2023.py > /Users/apple/Research/FlashDeconv/results/rerun_final/benchmarks/li2023/expected_seed42/log.txt 2>&1
+echo "job10 rc=$?" >> /Users/apple/Research/FlashDeconv/validation/rerun_final/benchmarks/jobs_local.done

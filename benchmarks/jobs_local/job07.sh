@@ -1,0 +1,3 @@
+#!/bin/bash
+mkdir -p /Users/apple/Research/FlashDeconv/results/rerun_final/benchmarks/laplacian/final_default && cd /Users/apple/Research/FlashDeconv/validation/rerun_final/benchmarks/laplacian && FD_FITLOG=/Users/apple/Research/FlashDeconv/results/rerun_final/fitlogs/local_laplacian.csv FD_TAG=laplacian_seed0 RERUN_OUT=/Users/apple/Research/FlashDeconv/results/rerun_final/benchmarks/laplacian/final_default /Users/apple/Research/FlashDeconv/.venv/bin/python ablation_laplacian_rerun.py > /Users/apple/Research/FlashDeconv/results/rerun_final/benchmarks/laplacian/final_default/log.txt 2>&1
+echo "job07 rc=$?" >> /Users/apple/Research/FlashDeconv/validation/rerun_final/benchmarks/jobs_local.done

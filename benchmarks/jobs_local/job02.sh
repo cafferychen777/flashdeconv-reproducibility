@@ -1,0 +1,3 @@
+#!/bin/bash
+cd /Users/apple/Research/FlashDeconv/validation/rerun_final/benchmarks/spotless && FD_FITLOG=/Users/apple/Research/FlashDeconv/results/rerun_final/fitlogs/local_spotless_gold.csv FD_TAG=spotless_gold /Users/apple/Research/FlashDeconv/.venv/bin/python run_silver_gold.py gold > /Users/apple/Research/FlashDeconv/results/rerun_final/benchmarks/spotless/log_gold.txt 2>&1 && /Users/apple/Research/FlashDeconv/.venv/bin/python gold_competitors.py > /Users/apple/Research/FlashDeconv/results/rerun_final/benchmarks/spotless/log_gold_competitors.txt 2>&1
+echo "job02 rc=$?" >> /Users/apple/Research/FlashDeconv/validation/rerun_final/benchmarks/jobs_local.done
