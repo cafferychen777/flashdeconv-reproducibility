@@ -2,8 +2,6 @@
 
 This repository contains the analysis and figure scripts used for the FlashDeconv manuscript. All results were produced with the FlashDeconv package version 0.2.0 ([github.com/cafferychen777/flashdeconv](https://github.com/cafferychen777/flashdeconv); Zenodo [10.5281/zenodo.23006113](https://doi.org/10.5281/zenodo.23006113)), and the scripts require FlashDeconv 0.2.0. The data sources are listed in the Data availability section of the manuscript. No data or results are included. The scripts are kept as they were run, so they still contain the absolute local and cluster (SLURM) paths of the original project. In those paths, `validation/<dir>` refers to the source folders listed under Layout below.
 
-The scripts for the earlier preprint version (v0.1) are on the [`legacy-v0.1`](https://github.com/cafferychen777/flashdeconv-reproducibility/tree/legacy-v0.1) branch.
-
 ## Layout
 
 | Folder | Contents | Original location |
@@ -34,6 +32,7 @@ Figure 1 is a schematic that was drawn separately, so this repository has no scr
 | Supp. Table liver collinearity | — | `figures/supp/liver_collinearity.py` |
 | **Fig. 2e**, Supp. Note/Table Li et al. | `benchmarks/li2023/run_li2023.py` (+ `li2023_*.py/.R`) | `figures/fig2_accuracy.py`, `make_supp_tables.py` |
 | **Fig. 2f,g**, Supp. Fig. and Tables pseudo-Visium HD | `benchmarks/pseudo_visium_hd/` (`prepare_bins.py`, `run_py_methods.py`, `run_rctd.R`, `evaluate.py`), `final_fd/run_fd_final.py`, `final_fd/rescore_standard.py`, `benchmarks/build_part_summary_arseven.py` | `figures/fig2_accuracy.py`, `figures/supp/supp_pseudo_vhd.py`, `make_supp_tables.py` |
+| Supp. Fig. and Table pseudo-Visium HD (`c2_supp_table.csv`) | `benchmarks/build_part_summary_arseven.py` (writes `c2_final_summary_long.csv`) | `benchmarks/pseudo_visium_hd/make_c2_supp_table.py` |
 | **Fig. 3a**, Supp. Note million-bin benchmark | `million_bin/s01`–`s04*.py`, `run_*.py/.R`, `run_task.sbatch`, `aces/` | `million_bin/s05_figure.py` (draft) |
 | **Fig. 3b–d**, Supp. Note/Table runtime | `runtime/prep_data.py`, `run_*.py/.R`, `monitor.py`, `run_task.sbatch`, `final_fd/`, `aces/` | `make_supp_tables.py` |
 | Supp. Fig. spatial regularization | `benchmarks/laplacian/ablation_laplacian_rerun.py`, `crc/xenium/xenium_crc_lambda_ablation.py`, `crc/demo/laplacian_ablation_visiumhd_final.py` | `figures/supp/supp_laplacian.py` |
