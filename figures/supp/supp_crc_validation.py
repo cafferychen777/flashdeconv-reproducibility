@@ -6,7 +6,7 @@ kNN self-enrichment, all-bin marker fold changes and RCTD classes).
 
 Data
   results/rerun_final/crc/xenium/virtual_binning/virtual_binning_metrics.csv
-  results/rerun_final/crc/xenium/pseudo_vhd/benchmark_per_type.csv
+  results/rerun_final/benchmarks/c2/c2_per_type_ap_final.csv  per-type average precision
   results/rerun_final/crc/xenium/visium_hd_p1/props_final/global_proportion_comparison.csv
   analysis/cross_cohort_evidence/results_local/marteau_per_patient_results.csv
       (analysis/cross_cohort_evidence/01_marteau_xenium_neutrophil_mregdc.py)
@@ -33,11 +33,11 @@ MARTEAU = PROJ / "analysis" / "cross_cohort_evidence" / "results_local" / "marte
 SAMPLES = ["P1_CRC", "P2_CRC", "P5_CRC"]
 PLAB = {"P1_CRC": "P1", "P2_CRC": "P2", "P5_CRC": "P5"}
 PT_MARK = {"P1_CRC": "o", "P2_CRC": "s", "P5_CRC": "^"}
-PT_SHADE = {"P1_CRC": "#4D4D4D", "P2_CRC": "#8C8C8C", "P5_CRC": "#BDBDBD"}
+PT_SHADE = {"P1_CRC": "#4D4D4D", "P2_CRC": "#8C8C8C", "P5_CRC": "#9A9A9A"}
 RCTD_COL = METHOD_COLORS["RCTD"]
 GREY = "#8A8A8A"
 
-H = 214.0
+H = 204.0
 W = FIG_W_MM
 fig = new_figure(height_mm=H)
 
@@ -66,7 +66,19 @@ BINS = [8, 16, 32, 64, 128]
 type_lin = gp[~gp.cell_type.str.startswith("[")].set_index("cell_type").lineage
 LIN_ORDER = ["Tumor", "Epithelial", "Stromal", "Endothelial", "Immune", "Other"]
 LIN_NAME = {"Tumor": "Tumour", "Epithelial": "Epithelial", "Stromal": "Stromal",
-            "Endothelial": "Endo.", "Immune": "Immune", "Other": "Other"}
+            "Endothelial": "Endothelial", "Immune": "Immune", "Other": "Other"}
+
+
+# Display names for the reference (Level2) cell types: sentence case, British 'Tumour'.
+TYPE_NAME = {"Unknown III (SM)": "Unknown III (SM-like)", "SM Stress Response": "SM stress response",
+             "Smooth Muscle": "Smooth muscle", "Proliferating Fibroblast": "Proliferating fibroblast",
+             "Vascular Fibroblast": "Vascular fibroblast", "Lymphatic Endothelial": "Lymphatic endothelial",
+             "Enteric Glial": "Enteric glia", "Proliferating Macrophages": "Proliferating macrophage",
+             "Proliferating Immune II": "Proliferating immune II", "vSM": "Vascular SM"}
+
+
+def type_name(t):
+    return TYPE_NAME.get(t, t.replace("Tumor ", "Tumour "))
 
 
 def vb_val(metric, b):
@@ -86,62 +98,51 @@ for l in LIN_ORDER:
     ts = sorted(ts, key=lambda t: -rt.loc[t].mean())
     rows += [(t, rt.loc[t].to_numpy(), l) for t in ts]
 
-row_h = 1.72   # mm per row
-gap = 1.1      # mm between lineage groups
-hm_left, hm_w = 27, 17
-top_a = H - 7
+# Four aligned columns: lineage summary and three cell-type blocks.
+row_h = 2.15
 cmap = mpl.colormaps["viridis"]
 norm = mpl.colors.Normalize(0, 1)
-
-# lineage block (5 rows) on top, then 38 types grouped by lineage
-ax_a = fig.add_axes(rect(hm_left, 0, hm_w, 1))  # placeholder, repositioned below
-ax_a.remove()
-y = top_a
-blocks = []
-blocks.append(("lin", [(LIN_NAME[l] if l != "Endothelial" else "Endothelial", rl.loc[l].to_numpy()) for l in LIN_ORDER[:5]]))
-for l in LIN_ORDER:
-    blocks.append((l, [(t, v) for t, v, g in rows if g == l]))
-
 axes_a = []
-for bi, (key, items) in enumerate(blocks):
-    h = row_h * len(items)
-    ax = fig.add_axes(rect(hm_left, y - h, hm_w, h))
-    M = np.vstack([v for _, v in items])
-    ax.imshow(M, aspect="auto", cmap=cmap, norm=norm, interpolation="nearest")
-    ax.set_yticks(range(len(items)))
-    ax.set_yticklabels([n for n, _ in items], fontsize=FS_TINY)
-    ax.tick_params(axis="y", length=0, pad=1)
-    ax.set_xticks([])
-    for s in ax.spines.values():
-        s.set_visible(False)
-    if key != "lin":
-        ax.text(1.04, 0.5, LIN_NAME[key], transform=ax.transAxes, rotation=90 if len(items) > 3 else 0,
-                ha="left", va="center", fontsize=FS_TINY, color="#4D4D4D")
-    else:
-        ax.set_title("Lineages", fontsize=FS_TINY, pad=1.5, loc="left", x=-0.0)
-    axes_a.append(ax)
-    y -= h + (gap * 2.6 if key == "lin" else gap)
-    if key == "lin":
-        ax_types_title_y = y + gap * 2.6 - 0.2
-last = axes_a[-1]
-last.set_xticks(range(len(BINS)))
-last.set_xticklabels([str(b) for b in BINS], fontsize=FS_TINY)
-last.tick_params(axis="x", length=1.5, pad=1)
-last.set_xlabel("Bin size (µm)", fontsize=FS_SMALL, labelpad=1)
-axes_a[1].set_title("Cell types", fontsize=FS_TINY, pad=1.5, loc="left")
-bottom_a = last.get_position().y0 * H
-cb = colorbar_small(fig, mpl.cm.ScalarMappable(norm=norm, cmap=cmap),
-                    rect(hm_left, bottom_a - 9.5, hm_w, 1.6), label="Pearson r vs Xenium",
-                    ticks=[0, 0.5, 1])
-panel_label(fig, "a", x=2 / W, y=(top_a + 3.5) / H)
+column_groups = [(20, ["lin"]), (64, ["Tumor", "Epithelial", "Other"]),
+                 (111, ["Stromal", "Endothelial"]), (158, ["Immune"])]
+for left, groups in column_groups:
+    y = H - 11
+    for key in groups:
+        if key == "lin":
+            items = [(LIN_NAME[l], rl.loc[l].to_numpy()) for l in LIN_ORDER[:5]]
+            title = "Lineages"
+        else:
+            items = [(type_name(t), v) for t, v, group in rows if group == key]
+            title = LIN_NAME[key] if key != "Endothelial" else "Endothelial"
+        height = row_h * len(items)
+        ax = fig.add_axes(rect(left, y - height, 20, height))
+        ax.imshow(np.vstack([v for _, v in items]), aspect="auto", cmap=cmap,
+                  norm=norm, interpolation="nearest")
+        ax.set_yticks(range(len(items)))
+        ax.set_yticklabels([name for name, _ in items], fontsize=FS_TINY)
+        ax.tick_params(axis="y", length=0, pad=1)
+        ax.set_xticks([])
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+        ax.set_title(title, fontsize=FS_SMALL, loc="left", pad=2)
+        axes_a.append(ax)
+        y -= height + 5
+    ax.set_xticks(range(len(BINS)), [str(v) for v in BINS], fontsize=FS_TINY)
+    ax.tick_params(axis="x", length=1.5, pad=1)
+    ax.set_xlabel("Bin size (µm)", fontsize=FS_SMALL, labelpad=1)
+colorbar_small(fig, mpl.cm.ScalarMappable(norm=norm, cmap=cmap),
+               rect(20, H - 38, 20, 1.6), label="Pearson r vs Xenium", ticks=[0, 0.5, 1])
+panel_label(fig, "a", x=2 / W, y=(H - 4) / H)
 
 # =====================================================================
 # b: per-type AUPR at 4 um, FlashDeconv vs comparators
 # =====================================================================
-pt = pd.read_csv(XEN / "pseudo_vhd" / "benchmark_per_type.csv")
-w4 = pt[pt.bin_size_um == 4].pivot(index="cell_type", columns="method", values="auprc")
-row1_top = H - 9
-b_l, b_s = 67, 34
+# per-type average precision (same estimator as the standardized C2 metrics / Supp. tables)
+pt = pd.read_csv(RESULTS / "rerun_final" / "benchmarks" / "c2" / "c2_per_type_ap_final.csv")
+pt["method"] = pt.method.replace({"FlashDeconv": "FlashDeconv_auto"})
+w4 = pt[pt.bin_size_um == 4].pivot(index="cell_type", columns="method", values="ap")
+row1_top = H - 66
+b_l, b_s = 12, 25
 axb = fig.add_axes(rect(b_l, row1_top - b_s, b_s, b_s))
 axb.plot([0, 1], [0, 1], color="black", lw=0.4, ls=(0, (2, 2)), zorder=1)
 for mk, lab, mrk in [("NNLS", "NNLS", "o"), ("MarkerScoring", "Marker scoring", "^")]:
@@ -151,18 +152,19 @@ for mk, lab, mrk in [("NNLS", "NNLS", "o"), ("MarkerScoring", "Marker scoring", 
         axb.scatter(w4.loc[t, "FlashDeconv_auto"], w4.loc[t, mk], s=12, marker=mrk,
                     facecolor=method_color(lab), edgecolor="black", lw=0.5, zorder=3)
     report[f"b 4um AUPR FD>{mk}"] = f"{int((w4.FlashDeconv_auto > w4[mk]).sum())}/{len(w4)}"
-for t, (tx, ty) in [("mRegDC", (0.05, 0.56)), ("Neutrophil", (0.05, 0.72))]:
+for t, (tx, ty) in [("mRegDC", (0.42, 0.48)), ("Neutrophil", (0.42, 0.65))]:
     axb.annotate(t, (w4.loc[t, "FlashDeconv_auto"], w4.loc[t, "NNLS"]), xytext=(tx, ty),
-                 fontsize=FS_TINY, ha="left", va="center",
+                 fontsize=FS_TINY, ha="right", va="center",
                  arrowprops=dict(arrowstyle="-", lw=0.4, color="black", shrinkA=1, shrinkB=2.5))
 axb.set_xlim(0, 1); axb.set_ylim(0, 1)
 axb.set_xticks([0, 0.5, 1]); axb.set_yticks([0, 0.5, 1])
 axb.set_xlabel("FlashDeconv AUPR")
 axb.set_ylabel("Comparator AUPR")
 axb.set_aspect("equal")
-axb.legend(loc="upper left", fontsize=FS_TINY, handletextpad=0.1, borderaxespad=0.1)
-axb.set_title("Per type, 4-µm bins", fontsize=FS_SMALL, pad=2)
-panel_label(axb, "b", dx_mm=-9, dy_mm=2.5)
+axb.legend(loc="lower left", bbox_to_anchor=(0, 1.005), fontsize=FS_TINY,
+           handletextpad=0.1, borderaxespad=0, labelspacing=0.25)
+axb.set_title("Per type, 4-µm bins", fontsize=FS_SMALL, pad=19)
+panel_label(fig, "b", x=2 / W, y=(row1_top + 9) / H)
 report["b 4um AUPR mRegDC FD/NNLS/marker"] = w4.loc["mRegDC", ["FlashDeconv_auto", "NNLS", "MarkerScoring"]].round(3).tolist()
 report["b 4um AUPR Neutrophil FD/NNLS/marker"] = w4.loc["Neutrophil", ["FlashDeconv_auto", "NNLS", "MarkerScoring"]].round(3).tolist()
 
@@ -172,22 +174,22 @@ report["b 4um AUPR Neutrophil FD/NNLS/marker"] = w4.loc["Neutrophil", ["FlashDec
 PB = [4, 8, 16, 32]
 METHS = [("FlashDeconv_auto", "FlashDeconv", "o"), ("NNLS", "NNLS", "o"),
          ("MarkerScoring", "Marker scoring", "^")]
-c_l0, c_w, c_gap = 116, 18.5, 3.5
+c_l0, c_w, c_gap = 47, 16, 3
 axc = []
-for k, (what, title) in enumerate([("mean", "Mean of 38 types"), ("mRegDC", "mRegDC"),
+for k, (what, title) in enumerate([("mean", "Mean of 38"), ("mRegDC", "mRegDC"),
                                    ("Neutrophil", "Neutrophil")]):
     ax = fig.add_axes(rect(c_l0 + k * (c_w + c_gap), row1_top - b_s, c_w, b_s))
     for mkey, mlab, mrk in METHS:
         vals = []
         for b in PB:
             s = pt[(pt.bin_size_um == b) & (pt.method == mkey)]
-            vals.append(s.auprc.mean() if what == "mean" else s.set_index("cell_type").auprc[what])
+            vals.append(s.ap.mean() if what == "mean" else s.set_index("cell_type").ap[what])
         ax.plot(PB, vals, marker=mrk, ms=2.3, color=method_color(mlab), lw=0.8, label=mlab)
         report[f"c AUPR {what} {mlab} 4/8/16/32"] = np.round(vals, 3)
     ax.set_xscale("log", base=2); ax.set_xticks(PB); ax.set_xticklabels([str(b) for b in PB])
     ax.minorticks_off()
     ax.set_ylim(0, 0.8); ax.set_yticks([0, 0.4, 0.8])
-    ax.set_title(title, fontsize=FS_SMALL, pad=2)
+    ax.set_title(title, fontsize=FS_SMALL, pad=19)
     if k == 0:
         ax.set_ylabel("AUPR")
     else:
@@ -195,23 +197,25 @@ for k, (what, title) in enumerate([("mean", "Mean of 38 types"), ("mRegDC", "mRe
     if k == 1:
         ax.set_xlabel("Bin size (µm)")
     axc.append(ax)
-axc[0].legend(loc="lower left", fontsize=FS_TINY, handlelength=1.0, borderaxespad=0.1)
-panel_label(axc[0], "c", dx_mm=-9, dy_mm=2.5)
+fig.legend(*axc[0].get_legend_handles_labels(), loc="upper center",
+           bbox_to_anchor=(74 / W, (row1_top + 4.5) / H), ncol=3,
+               fontsize=FS_TINY, handlelength=1.0, columnspacing=0.9, borderaxespad=0)
+panel_label(fig, "c", x=40 / W, y=(row1_top + 9) / H)
 
 # =====================================================================
 # d, e: whole-section frequencies (P1) vs Xenium
 # =====================================================================
 gpl = gp[gp.cell_type.str.startswith("[LINEAGE]")].copy()
 gpt = gp[~gp.cell_type.str.startswith("[LINEAGE]")].copy()
-row2_top = row1_top - b_s - 16
-d_s = 34
-for key, dd, left, label in [("d", gpl, 67, "Lineages (n = 6)"), ("e", gpt, 128, "Cell types (n = 38)")]:
+row2_top = row1_top
+d_s = 25
+for key, dd, left, label in [("d", gpl, 114, "Lineages (n = 6)"), ("e", gpt, 152, "Cell types (n = 38)")]:
     ax = fig.add_axes(rect(left, row2_top - d_s, d_s, d_s))
     r_fd = stats.pearsonr(dd.xenium_prop, dd.flashdeconv_prop)[0]
     r_rc = stats.pearsonr(dd.xenium_prop, dd.rctd_prop)[0]
     report[f"{key} r FD / RCTD singlets"] = (round(r_fd, 3), round(r_rc, 3))
     if key == "d":
-        lo, hi = 0, 0.45
+        lo, hi = 0, 0.55
         ax.plot([lo, hi], [lo, hi], color="black", lw=0.4, ls=(0, (2, 2)), zorder=1)
         ax.set_xlim(lo, hi); ax.set_ylim(lo, hi)
         ax.set_xticks([0, 0.2, 0.4]); ax.set_yticks([0, 0.2, 0.4])
@@ -219,22 +223,27 @@ for key, dd, left, label in [("d", gpl, 67, "Lineages (n = 6)"), ("e", gpt, 128,
         lo, hi = 5e-6, 0.6
         ax.plot([lo, hi], [lo, hi], color="black", lw=0.4, ls=(0, (2, 2)), zorder=1)
         ax.set_xscale("log"); ax.set_yscale("log")
-        ax.set_xlim(1e-4, hi); ax.set_ylim(lo, 12)
-        ax.set_xticks([1e-4, 1e-3, 1e-2, 1e-1]); ax.set_yticks([1e-5, 1e-3, 1e-1])
+        ax.set_xlim(lo, hi); ax.set_ylim(lo, hi)
+        ax.set_aspect("equal")
+        ax.set_xticks([1e-5, 1e-3, 1e-1]); ax.set_yticks([1e-5, 1e-3, 1e-1])
         ax.minorticks_off()
-    ax.scatter(dd.xenium_prop, dd.rctd_prop, s=8 if key == "d" else 5, marker="s", color=RCTD_COL,
-               lw=0, alpha=0.85, zorder=2, label=f"RCTD singlets (r = {r_rc:.2f})")
+    # published RCTD calls are doublet mode -> shared RCTD doublet marker
+    ax.scatter(dd.xenium_prop, dd.rctd_prop, s=8 if key == "d" else 5, marker=RCTD_MARKERS["doublet"],
+               color=RCTD_COL, lw=0, alpha=0.85, zorder=2, label="RCTD singlets")
     ax.scatter(dd.xenium_prop, dd.flashdeconv_prop, s=9 if key == "d" else 6, marker="o", color=FD_COLOR,
-               lw=0, alpha=0.9, zorder=3, label=f"FlashDeconv (r = {r_fd:.2f})")
+               lw=0, alpha=0.9, zorder=3, label="FlashDeconv")
     ax.set_xlabel("Xenium cell fraction")
     ax.set_ylabel("Estimated fraction")
     if key == "d":
         ax.set_aspect("equal")
-    ax.set_title(label, fontsize=FS_SMALL, pad=2)
-    h_, l_ = ax.get_legend_handles_labels()
-    ax.legend(h_[::-1], l_[::-1], loc="upper left", fontsize=FS_TINY, handletextpad=0.1,
-              borderaxespad=0.1)
-    panel_label(ax, key, dx_mm=-9, dy_mm=2.5)
+    ax.set_title(label, fontsize=FS_SMALL, pad=19)
+    h_, _ = ax.get_legend_handles_labels()
+    ax.legend(h_[::-1], [f"FlashDeconv: $r$ = {r_fd:.2f}",
+                        f"RCTD singlets: $r$ = {r_rc:.2f}"],
+              loc="lower left", bbox_to_anchor=(0, 1.005),
+              fontsize=FS_TINY, handlelength=0.8, handletextpad=0.4,
+              labelspacing=0.25, borderaxespad=0)
+    panel_label(ax, key, dx_mm=-8, dy_mm=9)
 
 # =====================================================================
 # f: Marteau Xenium atlas, per-patient enrichment around neutrophils (50 um)
@@ -247,9 +256,9 @@ TARGETS = [("mregdc", "LAMP3$^+$ DC", LINEAGE_COLORS["mRegDC"]),
            ("endothelial", "Endothelial", LINEAGE_COLORS["Endothelial"]),
            ("tumor", "Tumour/epithelial", LINEAGE_COLORS["Tumor"]),
            ("mast", "Mast", LINEAGE_COLORS["Mast"])]
-row3_top = row2_top - d_s - 19
-f_h = 36
-axf = fig.add_axes(rect(22, row3_top - f_h, 62, f_h))
+row3_top = 92
+f_h = 34
+axf = fig.add_axes(rect(23, row3_top - f_h, 65, f_h))
 rng = np.random.default_rng(3)
 for i, (key, lab, col) in enumerate(TARGETS):
     fo = mt[f"perm_r50_{key}_fold_over_expected"].to_numpy()
@@ -259,7 +268,7 @@ for i, (key, lab, col) in enumerate(TARGETS):
     axf.scatter(fo[sig], yj[sig], s=9, color=col, lw=0, zorder=3)
     axf.scatter(fo[~sig], yj[~sig], s=9, facecolor="white", edgecolor=col, lw=0.6, zorder=3)
     axf.plot([np.median(fo)] * 2, [i - 0.32, i + 0.32], color="black", lw=0.9, zorder=4)
-    axf.text(1.02, i, f"{sig.sum()}/{n_pat}", transform=mpl.transforms.blended_transform_factory(
+    axf.text(1.06, i, f"{sig.sum()}/{n_pat}", transform=mpl.transforms.blended_transform_factory(
         axf.transAxes, axf.transData), fontsize=FS_SMALL, va="center", ha="left")
     report[f"f r50 {key}: sig/median/range"] = (int(sig.sum()), round(float(np.median(fo)), 3),
                                                round(float(fo.min()), 2), round(float(fo.max()), 2))
@@ -270,22 +279,22 @@ axf.set_yticks(range(len(TARGETS)))
 axf.set_yticklabels([t[1] for t in TARGETS])
 axf.set_ylim(len(TARGETS) - 0.5, -0.5)
 axf.set_xlabel("Observed / expected within 50 µm of neutrophils")
-axf.text(1.02, -0.85, "P < 0.05", transform=mpl.transforms.blended_transform_factory(
+axf.text(1.06, -0.85, "Significant\npatients", transform=mpl.transforms.blended_transform_factory(
     axf.transAxes, axf.transData), fontsize=FS_TINY, va="center", ha="left")
 axf.legend(handles=[Line2D([], [], marker="o", ls="", color="#4D4D4D", ms=2.8, label="P < 0.05"),
                     Line2D([], [], marker="o", ls="", markerfacecolor="white",
                            markeredgecolor="#4D4D4D", markeredgewidth=0.6, ms=2.8, label="n.s."),
-                    Line2D([], [], color="black", lw=0.9, label="Median")],
+                    Line2D([], [], color="black", marker="|", ms=6, mew=0.9, ls="", label="Median")],
            loc="lower left", bbox_to_anchor=(0, 1.01), ncol=3, fontsize=FS_TINY, columnspacing=0.8)
 panel_label(axf, "f", dx_mm=-20, dy_mm=5)
 
 # =====================================================================
 # g: radius robustness (50 vs 100 um) for LAMP3+ DC and macrophage
 # =====================================================================
-g_w = 17
+g_w = 25
 axg = []
 for k, (key, lab, col) in enumerate(TARGETS[:2]):
-    ax = fig.add_axes(rect(112 + k * (g_w + 6), row3_top - f_h, g_w, f_h))
+    ax = fig.add_axes(rect(113 + k * (g_w + 8), row3_top - f_h, g_w, f_h))
     f50 = mt[f"perm_r50_{key}_fold_over_expected"].to_numpy()
     f100 = mt[f"perm_r100_{key}_fold_over_expected"].to_numpy()
     p50 = mt[f"perm_r50_{key}_p_value"].to_numpy() < 0.05
@@ -318,13 +327,13 @@ panel_label(axg[0], "g", dx_mm=-10, dy_mm=5)
 # =====================================================================
 mr = pd.read_csv(CRC / "figdata_FINAL" / "neutrophil_multiresolution_enrichment.csv")
 RES = [8, 16, 32, 64]
-row4_top = row3_top - f_h - 20
-h_h, h_w = 30, 20
+row4_top = 40
+h_h, h_w = 30, 22
 HT = [("Neutrophil", "Neutrophil", (1, 2, 4, 8, 16, 32, 64)), ("mRegDC", "mRegDC", (0.5, 1, 2, 4)),
       ("Macrophage", "Macrophage", (0.5, 1, 2, 4))]
 axh = []
 for k, (t, lab, ticks) in enumerate(HT):
-    ax = fig.add_axes(rect(14 + k * (h_w + 8), row4_top - h_h, h_w, h_h))
+    ax = fig.add_axes(rect(23 + k * (h_w + 4), row4_top - h_h, h_w, h_h))
     for s in SAMPLES:
         d = mr[mr["sample"] == s].sort_values("resolution_um")
         ax.plot(d.resolution_um, d[f"ratio_{t}"], marker=PT_MARK[s], ms=2.4, lw=0.7,
@@ -345,18 +354,18 @@ for k, (t, lab, ticks) in enumerate(HT):
     if k == 1:
         ax.set_xlabel("Bin size (µm)")
     axh.append(ax)
-axh[0].legend(handles=[Line2D([], [], marker=PT_MARK[s], ls="-", lw=0.7, color=PT_SHADE[s],
+axh[1].legend(handles=[Line2D([], [], marker=PT_MARK[s], ls="-", lw=0.7, color=PT_SHADE[s],
                               markerfacecolor="#4D4D4D", markeredgewidth=0, ms=2.4, label=PLAB[s])
                        for s in SAMPLES],
-              loc="lower left", bbox_to_anchor=(0, 1.1), ncol=3, fontsize=FS_TINY, columnspacing=0.8)
-panel_label(axh[0], "h", dx_mm=-11, dy_mm=6)
+              loc="lower center", bbox_to_anchor=(0.5, 1.09), ncol=3, fontsize=FS_TINY, columnspacing=0.8)
+panel_label(fig, "h", x=3 / W, y=(row4_top + 6) / H)
 
 # =====================================================================
 # i: marker fold change, all hotspot bins vs high-UMI (>=200 UMI) bins
 # =====================================================================
 mk = pd.concat([pd.read_csv(CRC / s / "markers.csv") for s in SAMPLES])
 mk = mk[mk.fit == "FINAL"]
-axi = fig.add_axes(rect(112, row4_top - h_h - 1, 32, 32))
+axi = fig.add_axes(rect(113, row4_top - h_h, 30, 30))
 lo, hi = 1 / 48, 512
 axi.plot([lo, hi], [lo, hi], color="black", lw=0.4, ls=(0, (2, 2)), zorder=1)
 axi.axhline(1, color="#BDBDBD", lw=0.4, zorder=0); axi.axvline(1, color="#BDBDBD", lw=0.4, zorder=0)
@@ -384,13 +393,16 @@ axi.set_xlim(lo, hi); axi.set_ylim(lo, hi)
 axi.set_aspect("equal")
 axi.set_xlabel("Fold change, all hotspot bins")
 axi.set_ylabel("Fold change, ≥200-UMI bins")
-axi.legend(handles=[Line2D([], [], marker="o", ls="", color=LINEAGE_COLORS["Neutrophil"], ms=2.6,
-                           label="Neutrophil markers (6)"),
-                    Line2D([], [], marker="o", ls="", color=GREY, ms=2.6, label="Control markers (4)")]
-                   + [Line2D([], [], marker=PT_MARK[s], ls="", color="#4D4D4D", ms=2.6, label=PLAB[s])
-                      for s in SAMPLES],
-           loc="upper left", bbox_to_anchor=(1.02, 1.0), fontsize=FS_TINY)
-panel_label(axi, "i", dx_mm=-11, dy_mm=3)
+marker_handles = [Line2D([], [], marker="o", ls="", color=col, ms=2.6, label=lab)
+                  for col, lab in [(LINEAGE_COLORS["Neutrophil"], "Neutrophil (6)"),
+                                   (GREY, "Control (4)")]]
+class_legend = axi.legend(handles=marker_handles, title="Markers", title_fontsize=FS_TINY,
+                         loc="upper left", bbox_to_anchor=(1.02, 1), fontsize=FS_TINY)
+axi.add_artist(class_legend)
+axi.legend(handles=[Line2D([], [], marker=PT_MARK[s], ls="", color="#4D4D4D", ms=2.6,
+                           label=PLAB[s]) for s in SAMPLES], title="Patient", title_fontsize=FS_TINY,
+           loc="upper left", bbox_to_anchor=(1.02, 0.58), fontsize=FS_TINY)
+panel_label(fig, "i", x=103 / W, y=(row4_top + 6) / H)
 
 save(fig, "supp_crc_validation")
 for k, v in report.items():

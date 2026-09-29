@@ -245,7 +245,7 @@ for ref in ["selfref", "extref"]:
             for k, p in preds.items():
                 if k == fd:
                     continue
-                cm = np.isin(common, p.index)  # non-primary variants may miss a few common bins
+                cm = np.asarray(common.isin(p.index))  # hash lookup; non-primary variants may miss a few common bins
                 Po = p.loc[common[cm]].to_numpy()
                 jo = jsd_rows(Po, G[cm])
                 d = jf[cm] - jo

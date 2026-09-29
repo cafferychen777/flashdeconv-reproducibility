@@ -12,7 +12,7 @@ Data (FlashDeconv 0.2.0 final package run unless stated):
   results/rerun_final/crc/P*_CRC/{knn_enrichment,markers,rctd}.csv
   results/rerun_final/crc/figdata_FINAL/neutrophil_microdomains_summary.csv
   results/rerun_final/crc/xenium/virtual_binning/virtual_binning_metrics.csv
-  results/rerun_final/crc/xenium/pseudo_vhd/benchmark_per_type.csv
+  results/rerun_final/benchmarks/c2/c2_per_type_ap_final.csv  per-type average precision
 """
 import sys
 from pathlib import Path
@@ -49,6 +49,10 @@ LIN_LABEL = {"Epithelial": "Epithelial/tumour", "Macrophage/Mono": "Macrophage",
 SR_COL = LINEAGE_COLORS["Fibroblast"]
 TP_COL = LINEAGE_COLORS["Epithelial"]
 
+# Local display palette; keep the abundance-to-saturation mapping unchanged.
+MAP_COLORS = dict(LINEAGE_COLORS)
+MAP_COLORS["Epithelial"] = "#C9A34C"
+
 
 def to_lineage(t):
     lin = CRC_TYPE_TO_LINEAGE.get(t, "Other")
@@ -67,7 +71,7 @@ def load_section(sid):
 
 
 def lineage_rgb(L):
-    cols = np.array([to_rgb(LINEAGE_COLORS[l]) for l in DISPLAY_LINEAGES])
+    cols = np.array([to_rgb(MAP_COLORS[l]) for l in DISPLAY_LINEAGES])
     dom = L.argmax(1)
     s = np.clip(L.max(1), 0, 1)
     s = 0.35 + 0.65 * s
@@ -81,9 +85,12 @@ def orient(ax, x, y, pad=0.01):
 
 
 
-def scale_bar_below(ax, length_um, label, y=-0.035):
+def scale_bar_below(ax, length_um, label, y=-0.035, baseline_mm=None):
     """Scale bar just below a spatial map (outside tissue), label to its right."""
     tr = mpl.transforms.blended_transform_factory(ax.transData, ax.transAxes)
+    if baseline_mm is not None:
+        tr = mpl.transforms.blended_transform_factory(ax.transData, ax.figure.transFigure)
+        y = baseline_mm / H
     x0 = min(ax.get_xlim())
     L = length_um / UM_PER_PX
     ax.plot([x0, x0 + L], [y, y], transform=tr, color="black", lw=1.0,
@@ -93,8 +100,8 @@ def scale_bar_below(ax, length_um, label, y=-0.035):
 
 
 # ---------------------------------------------------------------------------
-fig = new_figure(height_mm=222)
-W, H = FIG_W_MM, 222.0
+fig = new_figure(height_mm=210)
+W, H = FIG_W_MM, 210.0
 
 
 def rect(l, b, w, h):
@@ -115,15 +122,17 @@ for i, sid in enumerate(SAMPLES):
     ax.scatter(d["x"], d["y"], c=rgb, s=0.06, marker="s", linewidths=0, rasterized=True)
     clean_spatial(ax)
     orient(ax, d["x"], d["y"])
-    ax.set_title(f"{PLAB[sid]} ({len(d['x']):,} bins)", fontsize=FS, pad=1)
-    scale_bar_below(ax, 1000, "1 mm")
+    ax.set_anchor("N")
+    fig.text((26.5 + i * 46) / W, (top + 1) / H,
+             f"{PLAB[sid]} ({len(d['x']):,} bins)", ha="center", va="bottom", fontsize=FS)
+    scale_bar_below(ax, 1000, "1 mm", baseline_mm=top - map_h - 1.5)
     ax_a.append(ax)
-panel_label(ax_a[0], "a", dx_mm=-3.5, dy_mm=2.5)
+panel_label(fig, "a", x=2 / W, y=(top + 2.5) / H)
 
 # legend for lineages
 lax = fig.add_axes(rect(143, top - map_h, 36, map_h))
 lax.axis("off")
-handles = [Patch(facecolor=LINEAGE_COLORS[l], edgecolor="none", label=LIN_LABEL.get(l, l))
+handles = [Patch(facecolor=MAP_COLORS[l], edgecolor="none", label=LIN_LABEL.get(l, l))
            for l in DISPLAY_LINEAGES]
 lax.legend(handles=handles, loc="center left", frameon=False, fontsize=FS_SMALL,
            handlelength=0.9, handleheight=0.9, labelspacing=0.3, title="Dominant lineage",
@@ -141,24 +150,24 @@ ax_zoomsrc.add_patch(Rectangle((zc[0] - ZHALF, zc[1] - ZHALF), 2 * ZHALF, 2 * ZH
                                fill=False, lw=0.6, ec="black", zorder=5))
 
 # ---------------------------------------------------------------- b: diagnostic
-row2_top = top - map_h - 7
-row2_h = 44
+row2_top = top - map_h - 12
+row2_h = 29
 sid_b = "P2_CRC"
 d = secs[sid_b]
 pk = np.load(RD2 / f"pkg_crc_{sid_b}.npz")
 flag = pk["auto_score_pooled"] > 1.645
 prog = np.load(R / "b2_crc_refcheck" / "stage2" / "program_smoothed.npz")[f"{sid_b}__region_1"].astype(np.float32)
 
-axb1 = fig.add_axes(rect(4, row2_top - row2_h, 36, row2_h))
+axb1 = fig.add_axes(rect(4, row2_top - row2_h, 32, row2_h))
 axb1.scatter(d["x"][~flag], d["y"][~flag], color="#CFCFCF", s=0.07, marker="s",
              linewidths=0, rasterized=True)
 axb1.scatter(d["x"][flag], d["y"][flag], color=FLAG_COLOR, s=0.06, marker="s",
              linewidths=0, rasterized=True)
 clean_spatial(axb1); orient(axb1, d["x"], d["y"])
 axb1.set_title(f"P2 flagged bins ({100 * flag.mean():.1f}%)", fontsize=FS, pad=1)
-scale_bar_below(axb1, 1000, "1 mm")
+scale_bar_below(axb1, 1000, "1 mm", baseline_mm=row2_top - row2_h - 1.5)
 
-axb2 = fig.add_axes(rect(41, row2_top - row2_h, 36, row2_h))
+axb2 = fig.add_axes(rect(40, row2_top - row2_h, 32, row2_h))
 vmax = np.nanpercentile(prog, 99.5)
 cm_ifn = LinearSegmentedColormap.from_list("ifn", ["#EFEFEF", "#6A3D9A"])
 o = np.argsort(prog)
@@ -167,15 +176,15 @@ im = axb2.scatter(d["x"][o], d["y"][o], c=prog[o], cmap=cm_ifn, vmin=0, vmax=vma
 clean_spatial(axb2); orient(axb2, d["x"], d["y"])
 axb2.set_title("P2 IFN-γ programme", fontsize=FS, pad=1)
 bb = axb2.get_position()
-colorbar_small(fig, im, [bb.x0 + bb.width * 0.55, bb.y0 - 0.010, bb.width * 0.4, 0.005],
+colorbar_small(fig, im, [bb.x0 + bb.width * 0.5, (row2_top - row2_h - 2) / H, bb.width * 0.45, 0.8 / H],
                ticks=[0, vmax])
 cbax = fig.axes[-1]
 cbax.set_xticklabels(["0", "high"])
-panel_label(axb1, "b", dx_mm=-3.5, dy_mm=2.5)
+panel_label(fig, "b", x=2 / W, y=(row2_top + 4) / H)
 
 sc = pd.read_csv(RD2 / "summary_crc.csv")
 sc = sc[(sc["null"] == "auto") & (sc["key"] == "score_pooled")].set_index("sample")
-axb3 = fig.add_axes(rect(86, row2_top - row2_h + 8, 27, row2_h - 10))
+axb3 = fig.add_axes(rect(82, row2_top - row2_h, 27, row2_h))
 cats = [("All bins", "flag_all", "#8A8A8A"),
         ("IFN-γ high", "hot_region_1_flagged (IFN-gamma (R1))", "#6A3D9A"),
         ("Hypoxia high", "hot_region_2_flagged (Hypoxia (R2))", "#56B4E9")]
@@ -187,7 +196,7 @@ axb3.axhline(5, ls=":", lw=0.6, color="black")
 axb3.set_xticks(range(3)); axb3.set_xticklabels([PLAB[s] for s in SAMPLES])
 axb3.set_ylabel("Flagged bins (%)")
 axb3.set_ylim(0, 40)
-axb3.legend(loc="upper left", bbox_to_anchor=(0.0, 1.14), fontsize=FS_TINY, ncol=1,
+axb3.legend(loc="lower left", bbox_to_anchor=(0.0, 1.025), fontsize=FS_SMALL, ncol=1,
             handlelength=0.8)
 
 # ---------------------------------------------------------------- c: hotspot zoom
@@ -195,10 +204,10 @@ dz = secs[ZOOM_SID]
 zm = (np.abs(dz["x"] - zc[0]) < ZHALF) & (np.abs(dz["y"] - zc[1]) < ZHALF)
 neut = dz["P"][:, dz["types"].index("Neutrophil")]
 zs = 1.1
-axc1 = fig.add_axes(rect(121, row2_top - row2_h, 28.5, row2_h))
+axc1 = fig.add_axes(rect(118, row2_top - row2_h, 29, row2_h))
 axc1.scatter(dz["x"][zm], dz["y"][zm], c=lineage_rgb(dz["L"][zm]), s=zs, marker="s",
              linewidths=0, rasterized=True)
-axc2 = fig.add_axes(rect(151, row2_top - row2_h, 28.5, row2_h))
+axc2 = fig.add_axes(rect(150, row2_top - row2_h, 29, row2_h))
 cm_neu = LinearSegmentedColormap.from_list("neu", ["#F2F2F2", LINEAGE_COLORS["Neutrophil"]])
 imn = axc2.scatter(dz["x"][zm], dz["y"][zm], c=neut[zm], cmap=cm_neu, vmin=0, vmax=0.3,
                    s=zs, marker="s", linewidths=0, rasterized=True)
@@ -209,15 +218,15 @@ for ax in (axc1, axc2):
     ax.set_ylim(zc[1] + ZHALF, zc[1] - ZHALF)
 axc1.set_title("Dominant lineage", fontsize=FS, pad=1)
 axc2.set_title("Neutrophil proportion", fontsize=FS, pad=1)
-scale_bar_below(axc1, 200, "200 µm", y=-0.05)
+scale_bar_below(axc1, 200, "200 µm", baseline_mm=row2_top - row2_h - 1.5)
 bb = axc2.get_position()
-colorbar_small(fig, imn, [bb.x0 + bb.width * 0.5, bb.y0 - 0.012, bb.width * 0.45, 0.005],
+colorbar_small(fig, imn, [bb.x0 + bb.width * 0.5, (row2_top - row2_h - 2) / H, bb.width * 0.45, 0.8 / H],
                ticks=[0, 0.1, 0.3])
-panel_label(axc1, "c", dx_mm=-3.5, dy_mm=2.5)
+panel_label(fig, "c", x=115 / W, y=(row2_top + 4) / H)
 
 # ---------------------------------------------------------------- row 3: d e f
-row3_top = row2_top - row2_h - 13
-row3_h = 36
+row3_top = row2_top - row2_h - 17
+row3_h = 34
 # d: kNN self-enrichment
 knn = pd.concat([pd.read_csv(CRC / s / "knn_enrichment.csv") for s in SAMPLES])
 knn = knn[(knn.fit == "FINAL") & (knn.focal_type == knn.neighbor_type) & (knn.threshold == 0.1)]
@@ -259,7 +268,7 @@ for gi, g in enumerate(genes):
         axe.scatter(gi, vv, marker=PT_MARK[s], s=7, facecolor=col, edgecolor="none", zorder=2)
 axe.axhline(0, color="black", lw=0.4)
 axe.set_xticks(range(len(genes)))
-axe.set_xticklabels(genes, rotation=45, ha="right", fontstyle="italic", fontsize=FS_TINY)
+axe.set_xticklabels(genes, rotation=45, rotation_mode="anchor", ha="right", fontstyle="italic", fontsize=FS_SMALL)
 axe.set_ylabel("Hotspot / background, log$_2$")
 axe.set_xlim(-0.6, len(genes) - 0.4)
 axe.legend(handles=[Line2D([], [], marker=PT_MARK[s], ls="", color="#4D4D4D", ms=2.5, label=PLAB[s])
@@ -271,12 +280,16 @@ panel_label(axe, "e", dx_mm=-11, dy_mm=2.5)
 rc = pd.concat([pd.read_csv(CRC / s / "rctd.csv") for s in SAMPLES])
 rc = rc[rc.fit == "FINAL"].set_index("sample")
 rc.loc["Pooled"] = rc.loc[SAMPLES].sum(numeric_only=True)
-classes = [("Neutrophil singlet", lambda r: r.neut_singlet_label2, LINEAGE_COLORS["Neutrophil"]),
-           ("Other singlet", lambda r: r.singlet - r.neut_singlet_label2, "#4D4D4D"),
-           ("Doublet", lambda r: r.doublet, "#8A8A8A"),
+# RCTD singlet call = DeconvolutionLabel1; doublets count as neutrophil if either label is.
+# "No call" = in-tissue bins RCTD did not score (below its 100-UMI threshold).
+NEUT_LIGHT = tuple(0.5 + 0.5 * np.array(to_rgb(LINEAGE_COLORS["Neutrophil"])))
+classes = [("Neutrophil singlet", lambda r: r.neut_singlet_label1, LINEAGE_COLORS["Neutrophil"]),
+           ("Neutrophil doublet", lambda r: r.neut_doublet, NEUT_LIGHT),
+           ("Other singlet", lambda r: r.singlet - r.neut_singlet_label1, "#4D4D4D"),
+           ("Other doublet", lambda r: r.doublet - r.neut_doublet, "#8A8A8A"),
            ("Rejected", lambda r: r.reject, "#BDBDBD"),
-           ("Not scored", lambda r: r.NA, "#E3E3E3")]
-axf = fig.add_axes(rect(128, row3_top - row3_h + 9, 50, row3_h - 9))
+           ("No call", lambda r: r.NA, "#E3E3E3")]
+axf = fig.add_axes(rect(129, row3_top - row3_h, 49, row3_h))
 rows = SAMPLES + ["Pooled"]
 for i, s in enumerate(rows):
     r = rc.loc[s]
@@ -289,14 +302,17 @@ axf.set_yticks(range(len(rows)))
 axf.set_yticklabels([PLAB.get(s, s) + (f" (n={int(rc.loc[s].n_hotspot):,})") for s in rows])
 axf.invert_yaxis()
 axf.set_xlim(0, 100)
-axf.set_xlabel("RCTD class of hotspot bins (%)")
-axf.legend(loc="lower left", bbox_to_anchor=(-0.02, 1.02), ncol=3, fontsize=FS_TINY,
-           handlelength=0.8, columnspacing=0.6)
+axf.set_xlabel("Hotspot bins by RCTD call (%)")
+handles, labels = axf.get_legend_handles_labels()
+legend_order = [0, 1, 2, 3, 4, 5]
+axf.legend([handles[j] for j in legend_order], [labels[j] for j in legend_order],
+           loc="lower left", bbox_to_anchor=(0, 1.025), ncol=3, fontsize=FS_TINY,
+           handlelength=0.8, columnspacing=0.8, labelspacing=0.55, borderaxespad=0)
 panel_label(fig, "f", x=113 / W, y=axd.get_position().y1 + 2.5 / H)
 
 # ---------------------------------------------------------------- row 4: g h i
-row4_top = row3_top - row3_h - 17
-row4_h = 40
+row4_top = row3_top - row3_h - 20
+row4_h = 36
 types_g = ["mRegDC", "Macrophage", "CD8 T cell", "Mast", "Endothelial"]
 axg = fig.add_axes(rect(14, row4_top - row4_h, 66, row4_h))
 pvals = {}
@@ -324,8 +340,8 @@ axg.legend(handles=[Line2D([], [], marker="o", ls="", color=SR_COL, ms=2.5,
                            label=f"Stromal-resident (n={n_sr})"),
                     Line2D([], [], marker="o", ls="", color=TP_COL, ms=2.5,
                            label=f"Tumour-proximal (n={n_tp})")],
-           loc="lower left", bbox_to_anchor=(0, 1.04), ncol=2, fontsize=FS_TINY)
-panel_label(axg, "g", dx_mm=-11, dy_mm=6.5)
+           loc="lower left", bbox_to_anchor=(0, 1.025), ncol=2, fontsize=FS_TINY, borderaxespad=0)
+panel_label(axg, "g", dx_mm=-11, dy_mm=5.5)
 
 # h: Xenium lineage r across bin sizes
 vb = pd.read_csv(CRC / "xenium" / "virtual_binning" / "virtual_binning_metrics.csv")
@@ -340,24 +356,29 @@ axh.minorticks_off()
 axh.set_xlabel("Bin size (µm)")
 axh.set_ylabel("Pearson r vs Xenium")
 axh.set_ylim(0.4, 1.0)
-axh.legend(loc="lower right", fontsize=FS_TINY)
-panel_label(axh, "h", dx_mm=-10, dy_mm=6.5)
+axh.legend(loc="lower left", bbox_to_anchor=(0, 1.025), fontsize=FS_SMALL, borderaxespad=0)
+panel_label(axh, "h", dx_mm=-10, dy_mm=5.5)
 
 # i: 4 um AUPR
-pt = pd.read_csv(CRC / "xenium" / "pseudo_vhd" / "benchmark_per_type.csv")
+# per-type average precision (same estimator as the standardized C2 metrics / Supp. tables)
+pt = pd.read_csv(R / "rerun_final" / "benchmarks" / "c2" / "c2_per_type_ap_final.csv")
+pt["method"] = pt.method.replace({"FlashDeconv": "FlashDeconv_auto"})
 pt = pt[pt.bin_size_um == 4]
 meths = [("FlashDeconv_auto", "FlashDeconv"), ("NNLS", "NNLS"), ("MarkerScoring", "Marker scoring")]
 axi = fig.add_axes(rect(143, row4_top - row4_h, 36, row4_h))
 bw = 0.26
 for k, (mkey, mlab) in enumerate(meths):
-    vals = [pt[(pt.method == mkey) & (pt.cell_type == t)].auprc.iloc[0] for t in ["mRegDC", "Neutrophil"]]
+    vals = [pt[(pt.method == mkey) & (pt.cell_type == t)].ap.iloc[0] for t in ["mRegDC", "Neutrophil"]]
     axi.bar(np.arange(2) + (k - 1) * bw, vals, width=bw, color=method_color(mlab), lw=0, label=mlab)
 axi.set_xticks([0, 1]); axi.set_xticklabels(["mRegDC", "Neutrophil"])
 axi.set_ylabel("AUPR (4-µm bins)")
 axi.set_ylim(0, 0.8)
-axi.legend(loc="lower left", bbox_to_anchor=(0, 1.02), ncol=2, fontsize=FS_TINY,
-           columnspacing=0.6)
-panel_label(axi, "i", dx_mm=-10, dy_mm=6.5)
+handles_i, labels_i = axi.get_legend_handles_labels()
+order_i = [0, 2, 1]
+axi.legend([handles_i[j] for j in order_i], [labels_i[j] for j in order_i],
+           loc="lower left", bbox_to_anchor=(0, 1.025), ncol=2, fontsize=FS_SMALL,
+           columnspacing=0.8, labelspacing=0.4, borderaxespad=0)
+panel_label(axi, "i", dx_mm=-10, dy_mm=5.5)
 
 save(fig, "fig5_crc")
 print({t: f"{p:.2g}" for t, p in pvals.items()})

@@ -535,7 +535,7 @@ def global_proportion_comparison(
     print("Loading RCTD results...")
     rctd = pd.read_csv(rctd_csv, compression="gzip", low_memory=False)
     rctd_singlet = rctd[rctd["DeconvolutionClass"] == "singlet"]
-    rctd_counts = rctd_singlet["DeconvolutionLabel2"].value_counts()
+    rctd_counts = rctd_singlet["DeconvolutionLabel1"].value_counts()  # Label1 = singlet call
     rctd_total = rctd_counts.sum()
     rctd_props = {}
     for ct in cell_types:

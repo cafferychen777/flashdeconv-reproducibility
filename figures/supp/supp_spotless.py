@@ -1,4 +1,8 @@
-"""Supplementary figure: the Spotless benchmark in full (config final_default).
+"""Supplementary figure: the Spotless benchmark in full.
+
+Silver standards (a-c): FlashDeconv with lambda=0 (config final_default_lam0; the pseudo-spots
+have no spatial layout). Gold standards and case studies (d-f): package defaults (config
+final_default; real coordinates).
 
 Panels
   a  Silver standard: 13 methods x 4 metrics, colour = rank of the mean, text = mean
@@ -34,6 +38,7 @@ from style import (apply_style, new_figure, panel_label, save, RESULTS, PROJ,  #
 SP = RESULTS / "rerun_final" / "benchmarks" / "spotless"
 RDS = PROJ / "validation" / "spotless" / "raw_results" / "metrics"
 CFG = "final_default"
+SILVER_CFG = "final_default_lam0"
 
 METHOD_NAMES = {
     "FlashDeconv": "FlashDeconv", "rctd": "RCTD", "cell2location": "Cell2location",
@@ -42,11 +47,11 @@ METHOD_NAMES = {
     "stride": "STRIDE", "tangram": "Tangram", "dstg": "DSTG",
 }
 COMPETITORS = [k for k in METHOD_NAMES if k != "FlashDeconv"]
-TISSUE_LAB = {"brain_cortex": "Brain cortex", "cerebellum_cell": "Cerebellum (sc)",
-              "cerebellum_nucleus": "Cerebellum (sn)", "hippocampus": "Hippocampus",
+TISSUE_LAB = {"brain_cortex": "Brain cortex", "cerebellum_cell": "Cerebellum (cell)",
+              "cerebellum_nucleus": "Cerebellum (nucleus)", "hippocampus": "Hippocampus",
               "kidney": "Kidney", "scc_p5": "SCC"}
 METRICS = ["corr", "rmse", "jsd", "aupr"]
-METRIC_LAB = {"corr": "Pearson", "rmse": "RMSE", "jsd": "JSD", "aupr": "AUPR"}
+METRIC_LAB = {"corr": "Pearson r", "rmse": "RMSE", "jsd": "JSD", "aupr": "AUPR"}
 LOWER_BETTER = {"rmse", "jsd"}
 GOLD = {"seqfish_cortex_svz": "seqFISH+ cortex/SVZ", "seqfish_ob": "seqFISH+ OB",
         "starmap": "STARmap"}
@@ -64,25 +69,26 @@ def rank_of(values: pd.Series, lower_better: bool) -> pd.Series:
 # ---------------------------------------------------------------------------
 # Data
 # ---------------------------------------------------------------------------
-silver = pd.read_csv(SP / "silver_per_dataset_final_vs_competitors.csv")
+silver = pd.read_csv(RESULTS / "editor_revision" / "silver_per_dataset_lam0_vs_competitors.csv")
 methods_all = COMPETITORS + ["FlashDeconv"]
 
 sil_mean = silver.groupby("metric")[methods_all].mean().T  # method x metric (NaN skipped)
 sil_rank = pd.DataFrame({m: rank_of(sil_mean[m], m in LOWER_BETTER) for m in METRICS})
-ORDER = sil_rank.mean(axis=1).sort_values(kind="stable").index.tolist()  # best first
+ORDER = sil_mean["corr"].sort_values(ascending=False, kind="stable").index.tolist()  # by mean Pearson, best first
 
 corr = silver[silver.metric == "corr"]
 tis_mean = corr.groupby("tissue")[methods_all].mean().T  # method x tissue
 tis_rank = tis_mean.rank(ascending=False, method="min")
 
 wil = pd.read_csv(SP / "silver_paired_wilcoxon_final.csv")
-wil = wil[(wil.config == CFG) & (wil.metric == "corr")].set_index("comparator")
+wil = wil[(wil.config == SILVER_CFG) & (wil.metric == "corr")].set_index("comparator")
 
 # gold standards: competitors rescored with identical metric code
 gcomp = pd.read_csv(SP / "gold_competitors_recomputed.csv")
 gcomp = gcomp.groupby(["benchmark", "method"])[METRICS].mean().reset_index()
-gfd = pd.read_csv(SP / "fd_aggregate_gold.csv")
-gfd = gfd[gfd.config == CFG].groupby("benchmark")[METRICS].mean().reset_index()
+# FlashDeconv on the measured spot coordinates (validation/controls_editor/gold_realxy.py)
+gfd = pd.read_csv(RESULTS / "editor_revision" / "gold_realxy" / "fd_aggregate_gold.csv")
+gfd = gfd[gfd.config == "final_default_realxy"].groupby("benchmark")[METRICS].mean().reset_index()
 gfd["method"] = "FlashDeconv"
 gold = pd.concat([gcomp, gfd], ignore_index=True)
 
@@ -141,7 +147,8 @@ def rank_heatmap(ax, ranks, values, fmt, ylabels=True):
             v = values.loc[ORDER].values[i, j]
             if np.isfinite(v):
                 ax.text(j, i, fmt(v), ha="center", va="center", fontsize=FS_TINY,
-                        color="white" if r[i, j] >= 7 else "black")
+                        color="white" if r[i, j] >= 7 else "black",
+                        fontweight="bold" if ORDER[i] == "FlashDeconv" else "normal")
     ax.set_yticks(range(NM))
     if ylabels:
         ax.set_yticklabels([METHOD_NAMES[m] for m in ORDER])
@@ -155,17 +162,13 @@ def rank_heatmap(ax, ranks, values, fmt, ylabels=True):
     ax.xaxis.tick_top()
     for s in ax.spines.values():
         s.set_visible(False)
-    # outline the FlashDeconv row
-    i = ORDER.index("FlashDeconv")
-    ax.add_patch(plt.Rectangle((-0.5, i - 0.5), r.shape[1], 1, fill=False,
-                               ec=FD_COLOR, lw=0.9, clip_on=False))
 
 
 # ---- a: silver metrics -----------------------------------------------------
 ax_a = ax_mm(19, 12, 30, 58)
 rank_heatmap(ax_a, sil_rank[METRICS], sil_mean[METRICS], lambda v: f"{v:.3f}")
 ax_a.set_xticks(range(4))
-ax_a.set_xticklabels([METRIC_LAB[m] for m in METRICS])
+ax_a.set_xticklabels([METRIC_LAB[m].replace(" r", "") for m in METRICS])
 panel_label(ax_a, "a", dx_mm=-18, dy_mm=6)
 
 # ---- b: silver per tissue ---------------------------------------------------
@@ -173,8 +176,8 @@ tissues = list(TISSUE_LAB)
 ax_b = ax_mm(53, 12, 45, 58)
 rank_heatmap(ax_b, tis_rank[tissues], tis_mean[tissues], lambda v: f"{v:.2f}", ylabels=False)
 ax_b.set_xticks(range(len(tissues)))
-ax_b.set_xticklabels([TISSUE_LAB[t] for t in tissues], rotation=40, ha="left",
-                     rotation_mode="anchor")
+ax_b.set_xticklabels([TISSUE_LAB[t].replace(" (", "\n(") for t in tissues], rotation=40, ha="left",
+                     rotation_mode="anchor", linespacing=1.0)
 panel_label(ax_b, "b", dx_mm=-2.5, dy_mm=6)
 
 cb = colorbar_small(fig, plt.cm.ScalarMappable(norm=RANK_NORM, cmap=RANK_CMAP),

@@ -65,7 +65,8 @@ METHOD_COLORS = {
     "FlashDeconv": FD_COLOR,
     "RCTD": OI["blue"],
     "RCTD (doublet)": OI["blue"],
-    "RCTD (full)": "#5AA0D0",
+    "RCTD (full)": OI["blue"],
+    "RCTD (full, UMI ≥ 20)": OI["blue"],
     "Cell2location": OI["green"],
     "CARD": OI["orange"],
     "NNLS": OI["skyblue"],
@@ -74,6 +75,10 @@ METHOD_COLORS = {
     "Other": "#B8B8B8",
 }
 OTHER_METHOD_COLOR = "#B8B8B8"
+
+# RCTD settings share the RCTD colour and differ by marker / line style (all figures)
+RCTD_MARKERS = {"doublet": "o", "full": "s", "full20": "^"}
+RCTD_LS = {"doublet": "-", "full": "--", "full20": ":"}
 
 # Orthogonal / ground-truth measurements
 TRUTH_COLOR = "#333333"
@@ -94,7 +99,7 @@ WEIGHT_LABELS = {
 # Reference-diagnostic colours
 FLAG_COLOR = OI["vermillion"]
 UNFLAG_COLOR = "#D9D9D9"
-REF_COLORS = {"incomplete": OI["vermillion"], "complete": OI["blue"]}
+REF_COLORS = {"incomplete": "#5A5A5A", "complete": OI["blue"]}
 
 # ---------------------------------------------------------------------------
 # Lineage palette (shared by every figure)
@@ -199,7 +204,15 @@ def apply_style():
         "svg.fonttype": "none",
         "image.interpolation": "nearest",
         "mathtext.default": "regular",
+        "mathtext.fontset": "custom",
+        "mathtext.rm": "Arial",
+        "mathtext.it": "Arial:italic",
+        "mathtext.bf": "Arial:bold",
     })
+    # Larger, less raised super/subscripts: exponents stay >= ~5 pt at 5.5-6 pt text
+    import matplotlib._mathtext as _mt
+    _mt.SHRINK_FACTOR = 0.9
+    _mt.FontConstantsBase.sup1 = 0.5
 
 
 def new_figure(height_mm: float, width_mm: float = FIG_W_MM):

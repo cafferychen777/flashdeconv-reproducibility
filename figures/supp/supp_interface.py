@@ -36,8 +36,9 @@ SHORT = {"Macrophage/Mono": "Macrophage", "Pericyte/SMC": "Peri./SMC", "Fibrobla
 CODEX_COMPARE = ["Fibroblast", "Endothelial", "CD4 T", "CD8 T", "Treg", "NK", "B", "Macrophage/Mono"]
 MARKER_LIN = {"CD3E+CD3D": "CD8 T", "MS4A1": "B", "CD68": "Macrophage/Mono", "COL1A1": "Fibroblast",
               "PECAM1": "Endothelial"}
-MARKER_LAB = {"CD3E+CD3D": "CD3D/E (T)", "MS4A1": "MS4A1 (B)", "CD68": "CD68 (macrophage)",
-              "COL1A1": "COL1A1 (fibroblast)", "PECAM1": "PECAM1 (endothelial)"}
+# (gene, lineage): gene names are set in italic, lineages in roman
+MARKER_LAB = {"CD3E+CD3D": ("CD3D/CD3E", "T"), "MS4A1": ("MS4A1", "B"), "CD68": ("CD68", "macrophage"),
+              "COL1A1": ("COL1A1", "fibroblast"), "PECAM1": ("PECAM1", "endothelial")}
 
 
 def zs(v, ref=None):
@@ -252,18 +253,18 @@ def main():
         ax.scatter([xb] * len(b), b, s=4, color=FD_COLOR, lw=0, zorder=2)
         for xx, m in [(xa, summ.loc[sec, "median_r"]), (xb, summ.loc[sens, "median_r"])]:
             ax.plot([xx - 0.32, xx + 0.32], [m, m], color="k", lw=1.0, zorder=3)
-        ax.text(xa + 0.5, -0.02, LABEL[sec], ha="center", va="top", transform=ax.get_xaxis_transform(),
+        ax.text(xa + 0.5, 1.035, LABEL[sec], ha="center", va="bottom", transform=ax.get_xaxis_transform(),
                 fontsize=FS_SMALL)
     ax.axhline(0.7, color="k", lw=0.5, ls=(0, (3, 2)))
     ax.set_xticks([0, 1, 3, 4, 6, 7])
-    ax.set_xticklabels(["CEACAM", "EPCAM/KRT"] * 3, rotation=90, fontsize=FS_TINY)
-    ax.tick_params(axis="x", length=0, pad=7.5)
+    ax.set_xticklabels(["CEACAM", "EPCAM/KRT"] * 3, rotation=90, fontsize=FS_TINY, fontstyle="italic")
+    ax.tick_params(axis="x", length=0, pad=3)
     ax.set_xlim(-0.6, 7.6)
     ax.set_ylim(0.2, 1.02)
     ax.set_yticks([0.2, 0.4, 0.6, 0.8, 1.0])
     ax.set_ylabel("Pearson r, FlashDeconv vs Xenium")
-    ax.set_title("Visium HD boundary genes", fontsize=FS_SMALL, pad=2)
-    panel_label(ax, "d", dx_mm=-12)
+    ax.set_title("Visium HD boundary genes", fontsize=FS_SMALL, pad=18)
+    panel_label(ax, "d", dx_mm=-12, dy_mm=6.5)
 
     # ------------------------------------------------------------------ e: raw marker vs FlashDeconv
     ax = fig.add_axes(rect(80, yd, hd, hd))
@@ -274,7 +275,7 @@ def main():
     for m, lin in MARKER_LIN.items():
         d = mks[mks.marker == m]
         ax.scatter(d.r_marker_vs_orth, d.r_fd_vs_orth, s=9, color=LINEAGE_COLORS[lin], edgecolor="#333333",
-                   lw=0.25, zorder=3, label=MARKER_LAB[m])
+                   lw=0.25, zorder=3)
     ax.set_xlim(-1.02, 1.05)
     ax.set_ylim(-1.02, 1.05)
     ax.set_xticks([-1, 0, 1])
@@ -284,8 +285,19 @@ def main():
     ax.set_xlabel("r, raw HD marker vs cells")
     ax.set_ylabel("r, FlashDeconv vs cells")
     ax.set_aspect("equal")
-    ax.legend(loc="upper left", bbox_to_anchor=(1.0, 1.02), frameon=False, fontsize=FS_TINY, handletextpad=0.1,
-              borderaxespad=0, labelspacing=0.35)
+    from matplotlib.offsetbox import AnchoredOffsetbox, DrawingArea, HPacker, TextArea, VPacker
+    rows = []
+    for m, lin in MARKER_LIN.items():
+        da = DrawingArea(5, 5, 0, 0)
+        da.add_artist(Line2D([2.5], [2.5], marker="o", ms=2.9, ls="", mfc=LINEAGE_COLORS[lin],
+                             mec="#333333", mew=0.25))
+        gene, lab = MARKER_LAB[m]
+        rows.append(HPacker(children=[da, TextArea(gene, textprops=dict(fontsize=FS_TINY, style="italic")),
+                                      TextArea(f"({lab})", textprops=dict(fontsize=FS_TINY))],
+                            pad=0, sep=2.0, align="baseline"))
+    ax.add_artist(AnchoredOffsetbox(loc="upper left", child=VPacker(children=rows, pad=0, sep=2.2),
+                                    bbox_to_anchor=(1.08, 1.02), bbox_transform=ax.transAxes,
+                                    frameon=False, pad=0, borderpad=0))
     panel_label(ax, "e", dx_mm=-10)
 
     # ------------------------------------------------------------------ f: runtime vs bins

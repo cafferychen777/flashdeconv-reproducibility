@@ -43,6 +43,36 @@ def zs(v, ref=None):
     return (v - np.nanmean(ref)) / (np.nanstd(ref) + 1e-12)
 
 
+CODEX_COMPARE = ["Fibroblast", "Endothelial", "CD4 T", "CD8 T", "Treg", "NK", "B", "Macrophage/Mono"]
+
+
+def descriptors(cur, sec):
+    """Rim/deep-stroma descriptors for one section, as in validation/b1_pilot/posthoc_v2.py."""
+    sub = cur[cur.section == sec]
+    mod = [s for s in sub.source.unique() if s not in ("FD", "HDmarker")][0]
+    F = sub[sub.source == "FD"].pivot(index="band_mid", columns="name", values="value")
+    O = sub[sub.source == mod].pivot(index="band_mid", columns="name", values="value")
+    if mod == "CODEX":
+        F = F.assign(Fibroblast=F["Fibroblast"] + F["Pericyte/SMC"])
+
+    def d(C, l):
+        x = C.index.values
+        m = lambda lo, hi: C.loc[(x > lo) & (x < hi), l].mean()  # noqa: E731
+        return np.log2((m(0, 50) + 1e-4) / (m(150, 300) + 1e-4)), float(C[l].mean())
+
+    rows = []
+    for l in LIN:
+        fe, fm = d(F, l)
+        if l in O.columns and (mod != "CODEX" or l in CODEX_COMPARE):
+            oe, om = d(O, l)
+        else:
+            oe = om = np.nan
+        rows.append(dict(section=sec, modality=mod, lineage=l, fd_mean=fm, orth_mean=om, fd_edge=fe,
+                         orth_edge=oe, edge_supported=bool(np.isfinite(oe) and om >= 0.003
+                                                           and np.sign(fe) == np.sign(oe) and abs(oe) >= 0.3)))
+    return pd.DataFrame(rows)
+
+
 def load():
     cur = pd.concat([pd.read_csv(RES / "gradient_curves.csv.gz"), pd.read_csv(RES / "gradient_curves_ext.csv.gz")])
     cur.loc[cur.n_units < 50, ["value", "lo", "hi"]] = np.nan
@@ -51,6 +81,8 @@ def load():
     summ = pd.concat([pd.read_csv(RES / "section_summary.csv"), pd.read_csv(RES / "section_summary_ext.csv")])
     summ = summ.drop_duplicates("section").set_index("section")
     desc = pd.read_csv(RES / "cross_cancer_interface_descriptors_v2.csv")
+    # HCC is not in the precomputed table; same definitions, computed here from the same curves
+    desc = pd.concat([desc, descriptors(cur, "SPATCH_HCC")], ignore_index=True)
     return cur, conc, summ, desc
 
 
@@ -162,7 +194,7 @@ def main():
     panel_label(ax, "c", dx_mm=-9)
 
     # ------------------------------------------------------------------ d: gradient small multiples
-    gx0, gy0, gw, gh, gdx, gdy = 17, 60, 22.0, 17.0, 4.0, 4.0
+    gx0, gy0, gw, gh, gdx, gdy = 17, 60, 22.0, 17.0, 4.0, 5.0
     for j, sec in enumerate(PRIMARY):
         F, Flo, Fhi, O, osrc = curves(cur, sec)
         x = F.index.values
@@ -170,14 +202,14 @@ def main():
             ax = fig.add_axes(rect(gx0 + j * (gw + gdx), gy0 + i * (gh + gdy), gw, gh))
             ax.axvline(0, color="#BBBBBB", lw=0.4)
             fv = F[lin].values
-            ax.fill_between(x, zs(Flo[lin].values, fv), zs(Fhi[lin].values, fv), color=FD_COLOR, alpha=0.25, lw=0)
+            ax.fill_between(x, zs(Flo[lin].values, fv), zs(Fhi[lin].values, fv), color=FD_COLOR, alpha=0.16, lw=0)
             ax.plot(x, zs(fv), color=FD_COLOR, lw=0.8)
             if orth_ok(O, osrc, lin):
                 ov = O[lin].values
                 ax.plot(x, zs(ov), color=TRUTH_COLOR, lw=0.8, ls=(0, (2.5, 1)))
                 rr = conc[(conc.section == sec) & (conc.lineage == lin)].r
                 if len(rr):
-                    ax.text(0.04, 0.97, f"r = {rr.iloc[0]:.2f}", transform=ax.transAxes, va="top", ha="left",
+                    ax.text(0.04, 0.97, f"$r$ = {rr.iloc[0]:.2f}", transform=ax.transAxes, va="top", ha="left",
                             fontsize=FS_TINY)
             ax.set_xlim(-200, 300)
             ax.set_ylim(-3, 3.6)
@@ -199,17 +231,18 @@ def main():
     fig.text(4.5 / W, 1 - (gy0 + 1.5 * gh + gdy) / H, "Proportion (z-score)", rotation=90, ha="center", va="center")
     fig.legend(handles=[Line2D([], [], color=FD_COLOR, lw=1, label="FlashDeconv (Visium HD)"),
                         Line2D([], [], color=TRUTH_COLOR, lw=1, ls=(0, (2.5, 1)), label="Cells (Xenium / CODEX)")],
-               loc="upper center", bbox_to_anchor=((gx0 + 2.5 * gw + 2 * gdx) / W, 1 - (gy0 + 3 * gh + 2 * gdy + 10.5) / H),
+               loc="upper center", bbox_to_anchor=((gx0 + 178) / (2 * W), 1 - (gy0 + 3 * gh + 2 * gdy + 10.5) / H),
                ncol=2, frameon=False, fontsize=FS_SMALL)
 
     # ------------------------------------------------------------------ e: CD8 T placement
-    ex0 = 151
+    ex0 = 153
+    eh = (3 * gh + 2 * gdy - 6) / 2
     for k, (secs_, osrc_lab, title) in enumerate([(["SPATCH_OV"], "CODEX", "Ovarian (OV-1)"),
                                                    (["CRC_P1", "CRC_P2", "CRC_P5"], "Xenium", "CRC P1, P2, P5")]):
-        ax = fig.add_axes(rect(ex0, gy0 + k * (27 + 6), 27, 27))
+        ax = fig.add_axes(rect(ex0, gy0 + k * (eh + 6), 25, eh))
         ax.axvline(0, color="#BBBBBB", lw=0.4)
-        ax.axvspan(0, 50, color="#0072B2", alpha=0.12, lw=0)
-        ax.axvspan(150, 300, color="#56B4E9", alpha=0.12, lw=0)
+        ax.axvspan(0, 50, color="#0072B2", alpha=0.07, lw=0)
+        ax.axvspan(150, 300, color="#56B4E9", alpha=0.07, lw=0)
         for sec in secs_:
             F, Flo, Fhi, O, osrc = curves(cur, sec)
             x = F.index.values
@@ -222,7 +255,7 @@ def main():
         ax.set_xticks([-200, 0, 200])
         ax.set_yticks([0, 0.5, 1])
         ax.set_title(f"CD8 T, {title}", fontsize=FS_SMALL, pad=2)
-        ax.set_ylabel("Relative to max")
+        ax.set_ylabel("Relative to max", labelpad=1.5)
         if k == 0:
             ax.set_xticklabels([])
             panel_label(ax, "e", dx_mm=-9)
@@ -232,30 +265,30 @@ def main():
     # ------------------------------------------------------------------ f: rim/deep heatmap
     hx, hy, hw, hh = 23, 141, 52, 44
     ax = fig.add_axes(rect(hx, hy, hw, hh))
-    M = desc.pivot(index="lineage", columns="section", values="fd_edge").reindex(LIN)[ORTH_SECS]
-    Mm = desc.pivot(index="lineage", columns="section", values="fd_mean").reindex(LIN)[ORTH_SECS]
-    Sp = desc.pivot(index="lineage", columns="section", values="edge_supported").reindex(LIN)[ORTH_SECS]
+    M = desc.pivot(index="lineage", columns="section", values="fd_edge").reindex(LIN)[ALL_SECS]
+    Mm = desc.pivot(index="lineage", columns="section", values="fd_mean").reindex(LIN)[ALL_SECS]
+    Sp = desc.pivot(index="lineage", columns="section", values="edge_supported").reindex(LIN)[ALL_SECS]
     V = M.values.astype(float).copy()
     V[Mm.values < 0.001] = np.nan
-    for j, sec in enumerate(ORTH_SECS):
+    for j, sec in enumerate(ALL_SECS):
         if sec.startswith("LUNG"):
             for i, lin in enumerate(LIN):
                 if lin in LUNG_MASK:
                     V[i, j] = np.nan
     cmap = plt.get_cmap("RdBu_r").copy()
-    cmap.set_bad("#E6E6E6")
+    cmap.set_bad("#D6D6D6")
     im = ax.imshow(np.ma.masked_invalid(V), cmap=cmap, vmin=-3, vmax=3, aspect="auto", interpolation="nearest")
     S = Sp.values.astype(bool) & np.isfinite(V)
     yy, xx = np.where(S)
     ax.scatter(xx, yy, s=3, color="k", lw=0)
-    ax.set_xticks(range(len(ORTH_SECS)))
-    ax.set_xticklabels([LABEL[s] for s in ORTH_SECS], rotation=90)
+    ax.set_xticks(range(len(ALL_SECS)))
+    ax.set_xticklabels([LABEL[s] for s in ALL_SECS], rotation=90)
     ax.set_yticks(range(len(LIN)))
     ax.set_yticklabels([l.replace("Macrophage/Mono", "Macrophage") for l in LIN])
     ax.tick_params(length=0)
     for s in ax.spines.values():
         s.set_visible(False)
-    colorbar_small(fig, im, rect(hx + hw + 2, hy + 8, 1.6, 26), orientation="vertical", ticks=[-3, 0, 3],
+    colorbar_small(fig, im, rect(hx + hw + 2.5, hy + 8, 2.0, 26), orientation="vertical", ticks=[-3, 0, 3],
                    label="log$_2$ rim / deep stroma")
     panel_label(ax, "f", dx_mm=-21)
 
@@ -266,7 +299,8 @@ def main():
              ("Pericyte/SMC", "Pericyte/SMC rim\n(log$_2$ rim / deep stroma)", ["CRC_P1", "CRC_P2", "CRC_P5",
                                                                                 "LUNG_X1", "LUNG_X5K"], "edge")]
     for k, (lin, lab, secs_, kind) in enumerate(feats):
-        ax = fig.add_axes(rect(fx0 + k * (fw + 4.5), hy + 1, fw, 34))
+        panel_x, panel_w = [(98, 22), (124.5, 25), (154, 22)][k]
+        ax = fig.add_axes(rect(panel_x, hy + 1, panel_w, 34))
         vals_fd, vals_or = [], []
         for sec in secs_:
             if kind == "step":
@@ -287,20 +321,25 @@ def main():
         ax.scatter(xs, vals_or, s=9, facecolor="white", edgecolor=TRUTH_COLOR, lw=0.6, zorder=3)
         ax.scatter(xs, vals_fd, s=9, color=FD_COLOR, lw=0, zorder=4)
         ax.set_xticks(xs)
-        ax.set_xticklabels([LABEL[s] for s in secs_], rotation=90)
+        ax.set_xticklabels([LABEL[s] for s in secs_], fontsize=FS_TINY,
+                           rotation=55, ha="right", rotation_mode="anchor")
         ax.set_xlim(-0.6, len(secs_) - 0.4)
         ax.tick_params(axis="x", length=0)
-        ax.set_title(lab, fontsize=FS_SMALL, pad=2, linespacing=1.1)
+        feature, ratio = lab.split("\n")
+        ax.text(0.5, 1.085, feature, transform=ax.transAxes, ha="center", va="bottom",
+                fontsize=FS_SMALL)
+        ax.text(0.5, 1.015, ratio, transform=ax.transAxes, ha="center", va="bottom",
+                fontsize=FS_TINY)
         if k == 0:
             ax.set_ylabel("log$_2$ enrichment")
-            panel_label(ax, "g", dx_mm=-9)
+            panel_label(fig, "g", x=89 / W, y=1 - (hy - 1.5) / H)
         lo = np.nanmin(vals_fd + vals_or)
         hi = np.nanmax(vals_fd + vals_or)
         ax.set_ylim(min(-0.5, lo - 0.5), max(0.5, hi + 0.5))
     fig.legend(handles=[Line2D([], [], marker="o", ls="", ms=3, color=FD_COLOR, label="FlashDeconv"),
                         Line2D([], [], marker="o", ls="", ms=3, mfc="white", mec=TRUTH_COLOR, mew=0.6,
                                label="Cells (Xenium / CODEX)")],
-               loc="upper left", bbox_to_anchor=(fx0 / W, 1 - (hy + 49) / H), ncol=2, frameon=False,
+               loc="upper center", bbox_to_anchor=((98 + 176) / (2 * W), 1 - (hy + 46) / H), ncol=2, frameon=False,
                fontsize=FS_SMALL)
 
     save(fig, "fig6_interface")

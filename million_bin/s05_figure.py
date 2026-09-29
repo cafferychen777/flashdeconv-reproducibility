@@ -122,14 +122,15 @@ for lab in STYLE:
     c, ls, mk = STYLE[lab]
     ok = x[x.status == "OK"]
     ax_t.plot(ok.scale, ok.fit_seconds / 60, ls=ls, color=c, marker=mk, ms=3, lw=1.0, mew=0)
-    ax_m.plot(ok.scale, ok.peak_rss_gb if lab != "Cell2location" else ok.peak_gpu_gb,
+    ax_m.plot(ok.scale, ok.peak_rss_gb,  # host memory (PSS) for every method
               ls=ls, color=c, marker=mk, ms=3, lw=1.0, mew=0)
     bad = x[x.status != "OK"]
     for _, b in bad.iterrows():  # not completed: drawn at the limit that was hit
         if b.status == "DNF":
             ax_t.plot(b.scale, 24 * 60, marker="X", color=c, ms=5, mew=0)
         else:  # OOM (or error): at the 500 GB memory limit
-            ax_m.plot(b.scale, 500, marker="X", color=c, ms=5, mew=0)
+            lim = float(b.mem_limit_gb) if str(b.mem_limit_gb) not in ("", "nan") else 500.0
+            ax_m.plot(b.scale, lim, marker="X", color=c, ms=5, mew=0)
 for ax, yl in [(ax_t, "Fit time (min)"), (ax_m, "Peak memory (GB)")]:
     ax.set_yscale("log")
     scale_axis(ax, [10_000, 100_000, 1_000_000])
@@ -188,7 +189,7 @@ label(ax_c)
 handles = [Line2D([], [], color=STYLE[k][0], ls=STYLE[k][1], marker=STYLE[k][2], ms=3, lw=1.0, mew=0, label=k)
            for k in STYLE]
 handles += [Line2D([], [], ls="", marker="o", color="#333333", ms=3.5, label="Completed"),
-            Line2D([], [], ls="", marker="X", color="#000000", ms=4, label="Not completed: out of memory (500 GB)"),
+            Line2D([], [], ls="", marker="X", color="#000000", ms=4, label="Not completed: out of memory"),
             Line2D([], [], ls="", marker="X", color="#7F7F7F", ms=4, label="Not completed: >24 h"),
             Line2D([], [], ls="", marker="o", mfc="white", mec="#BBBBBB", ms=3.5, label="Not run / pending")]
 fig.legend(handles=handles, loc="lower center", ncol=5, frameon=False, bbox_to_anchor=(0.5, 0.0),

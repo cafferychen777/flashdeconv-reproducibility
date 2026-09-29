@@ -273,7 +273,8 @@ def lineage_marker_validation(P, types, rctd, lin_expr):
     """marker_gene_validation() per sample: per-gene mean expression by category."""
     fd_lin = pd.Series(np.array(types)[P.argmax(1)]).map(LINEAGE_MAP).fillna("Other").to_numpy()
     sing = rctd["cls"] == "singlet"
-    rl = pd.Series(rctd["l2"]).map(LINEAGE_MAP).fillna("Other").to_numpy()
+    # DeconvolutionLabel1 is RCTD's singlet (first-type) call; Label2 is the runner-up type.
+    rl = pd.Series(rctd["l1"]).map(LINEAGE_MAP).fillna("Other").to_numpy()
     cats = {"Agreed_Immune": sing & (rl == "Immune") & (fd_lin == "Immune"),
             "Agreed_Stromal": sing & (rl == "Stromal") & (fd_lin == "Stromal"),
             "RCTD_Immune_FD_Stromal": sing & (rl == "Immune") & (fd_lin == "Stromal"),

@@ -31,7 +31,7 @@ Z95 = 1.6448536269514722
 NULL_STYLE = {  # colour, marker, label
     "left_half": ("#9A9A9A", "o", "Left-half"),
     "central": (OI["skyblue"], "s", "Central matching"),
-    "auto": ("#252525", "D", "Auto (smaller scale)"),
+    "auto": ("#252525", "D", "Automatic (default)"),
 }
 
 # ---------------------------------------------------------------------------
@@ -39,6 +39,8 @@ NULL_STYLE = {  # colour, marker, label
 # ---------------------------------------------------------------------------
 # complete-reference flag rates under the three nulls (Spotless, Xenium-derived CRC)
 nc = pd.read_csv(RF / "complete_reference_null_comparison.csv")
+# Spotless rows at lambda=0 (no spatial layout; validation/controls_editor/refdiag_spotless_lam0_extra.py)
+nc = pd.concat([nc[nc.set != "spotless"], pd.read_csv(RESULTS / "editor_revision" / "refdiag_lam0" / "spotless_null_comparison.csv")])
 # CRC Visium HD P1/P2/P5 (complete 38-type reference): pooled scores per bin
 SAMPLES = ["P1_CRC", "P2_CRC", "P5_CRC"]
 crc_rates = {}
@@ -51,10 +53,11 @@ for s in SAMPLES:
                     "auto": np.mean(a > Z95)}
 
 dec = pd.read_csv(RV2 / "summary_v3_fpr_by_depth_decile.csv")
+dec = pd.concat([dec[dec.set != "spotless"], pd.read_csv(RESULTS / "editor_revision" / "refdiag_lam0" / "spotless_fpr_by_depth_decile.csv")])
 crc_dec = pd.read_csv(RV2 / "summary_crc_by_depth_decile.csv")
 
-rem = pd.read_csv(RF / "spotless_removal_auroc.csv")
-nam = pd.read_csv(RF / "spotless_removal_naming.csv")
+rem = pd.read_csv(RESULTS / "editor_revision" / "refdiag_lam0" / "spotless_removal_auroc.csv")  # lambda=0 (no spatial layout)
+nam = pd.read_csv(RESULTS / "editor_revision" / "refdiag_lam0" / "spotless_removal_naming.csv")  # lambda=0
 dist = rem[np.isclose(rem.thr, 0.3)][["ds", "pattern", "removed", "distinct"]]
 nam = nam.merge(dist, on=["ds", "pattern", "removed"], how="inner")
 
@@ -70,7 +73,7 @@ DLAB = ["<0.05", "0.05–0.1", "0.1–0.2", ">0.2"]
 # ---------------------------------------------------------------------------
 # Canvas
 # ---------------------------------------------------------------------------
-H = 214.0
+H = 218.0
 fig = new_figure(H)
 
 
@@ -91,9 +94,12 @@ def ref5(ax):
 # ---- a: complete-reference flag rate under three nulls --------------------
 ROW1_Y, ROW1_H = 3, 38
 ax = ax_mm(13, ROW1_Y + 4, 100, ROW1_H - 4)
+# Spotless silver-standard data sets 1-6 (validation/benchmark_data/silver_standard_<ds>-*)
+SPOT_TISSUE = {1: "Brain cortex", 2: "Cerebellum (cell)", 3: "Cerebellum (nucleus)",
+               4: "Hippocampus", 5: "Kidney", 6: "SCC"}
 cats = []
 for ds in range(1, 7):
-    cats.append((f"DS{ds}", ("spotless", ds)))
+    cats.append((SPOT_TISSUE[ds], ("spotless", ds)))
 cats += [("8 µm", ("c2_8um", None)), ("16 µm", ("c2_16um", None))]
 cats += [(s.split("_")[0], ("crc", s)) for s in SAMPLES]
 off = {"left_half": -0.22, "central": 0.0, "auto": 0.22}
@@ -109,7 +115,8 @@ for i, (_, (st, key)) in enumerate(cats):
             y = 100 * crc_rates[key][nl]
         ax.scatter(i + off[nl], y, s=9, marker=mk, color=c, lw=0, zorder=2)
 ref5(ax)
-ax.set_xticks(range(len(cats)), [c[0] for c in cats])
+ax.set_xticks(range(len(cats)), [c[0] for c in cats], rotation=35, ha="right",
+              rotation_mode="anchor")
 ax.tick_params(axis="x", length=0)
 ax.set_xlim(-0.6, len(cats) - 0.4)
 ax.set_ylim(0, 14)
@@ -136,10 +143,10 @@ for j, (title, st, key) in enumerate(subs):
     for nl in ("left_half", "auto"):
         col, mk, _ = NULL_STYLE[nl]
         if st == "crc":
-            for s, ls in zip(SAMPLES, ("-", "--", ":")):
-                d = crc_dec[(crc_dec["sample"] == s) & (crc_dec["null"] == nl)
-                            & (crc_dec.key == key)].sort_values("decile")
-                axb.plot(d.decile + 1, 100 * d.flag_rate, ls=ls, color=col, lw=0.7)
+            d = crc_dec[crc_dec["sample"].isin(SAMPLES) & (crc_dec["null"] == nl)
+                        & (crc_dec.key == key)].groupby("decile").flag_rate.agg(["mean", "min", "max"])
+            axb.fill_between(d.index + 1, 100 * d["min"], 100 * d["max"], color=col, alpha=0.18, lw=0)
+            axb.plot(d.index + 1, 100 * d["mean"], "-", marker=mk, color=col, lw=0.7, ms=1.6)
         else:
             d = dec[(dec.set == st) & (dec.key == key) & (dec["null"] == nl)].sort_values("decile")
             axb.plot(d.decile + 1, 100 * d.fpr, "-", marker=mk, color=col, lw=0.7, ms=1.6)
@@ -157,15 +164,10 @@ for j, (title, st, key) in enumerate(subs):
         axb.set_xlabel("UMI depth decile", fontsize=FS_SMALL)
     else:
         axb.set_xticklabels([])
-    if st == "crc":
-        axb.legend(handles=[Line2D([], [], color="#555555", ls=ls, lw=0.7, label=s.split("_")[0])
-                            for s, ls in zip(SAMPLES, ("-", "--", ":"))],
-                   loc="upper left", fontsize=FS_TINY, handlelength=1.6, ncol=1,
-                   borderaxespad=0.0, labelspacing=0.1)
 letter("b", 118, ROW1_Y)
 
 # ---- c: removal AUROC by abundance class and positive-bin threshold -------
-ROW2_Y, ROW2_H = 55, 32
+ROW2_Y, ROW2_H = 59, 32
 ax = ax_mm(13, ROW2_Y + 3, 44, ROW2_H - 3)
 classes = ["rare", "moderate", "abundant"]
 thr_col = {0.1: "#D0D0D0", 0.3: "#8A8A8A", 0.5: "#3A3A3A"}
@@ -193,7 +195,7 @@ r3 = rem[np.isclose(rem.thr, 0.3)].copy()
 r3["dbin"] = pd.cut(r3.distinct, DBINS, labels=DLAB, include_lowest=True)
 ax = ax_mm(72, ROW2_Y + 3, 40, ROW2_H - 3)
 for k, (col, lab, c) in enumerate((("flag_rate_neg", "Removed type < 1%", "#9A9A9A"),
-                                    ("flag_rate_pos", "Removed type > 30%", FLAG_COLOR))):
+                                    ("flag_rate_pos", "Removed type > 30%", "#252525"))):
     g = r3.groupby("dbin", observed=False)[col]
     med, q1, q3 = g.median(), g.quantile(0.25), g.quantile(0.75)
     x = np.arange(len(DLAB)) + (k - 0.5) * 0.28
@@ -231,7 +233,7 @@ ax.legend(loc="upper left")
 letter("e", 120, ROW2_Y)
 
 # ---- f: composite intestine reference --------------------------------------
-ROW3_Y, ROW3_H = 100, 56
+ROW3_Y, ROW3_H = 104, 56
 SRC = [("Haber2017", "Haber 2017 (epithelium)", LINEAGE_COLORS["Epithelial"]),
        ("Xu2019_immune", "Xu 2019 (immune)", OI["purple"]),
        ("Paerregaard2023_stroma", "Paerregaard 2023 (stroma)", OI["green"]),
@@ -303,12 +305,13 @@ ax.set_yticks(range(len(top)), top, fontstyle="italic", fontsize=FS_SMALL)
 ax.tick_params(axis="y", length=0)
 ax.set_ylim(len(top) - 0.4, -0.6)
 ax.set_xlim(0, 5)
-ax.set_xlabel("Unexplained score (LUAD reference)")
+ax.set_xlabel("Unexplained score (log$_2$ O/E)")
+ax.set_title("LUAD reference", fontsize=FS_SMALL, pad=2)
 ax.legend(loc="lower right")
 letter("h", 124, ROW3_Y)
 
 # ---- i: CRC, flagged fraction in program-high bins under both nulls -------
-ROW4_Y, ROW4_H = 174, 30
+ROW4_Y, ROW4_H = 178, 30
 cats = [("All bins", "flag_all", None),
         ("IFN-γ R0", "hot_region_0_flagged (IFN-gamma (R0))", "hot_region_0_n"),
         ("IFN-γ R1", "hot_region_1_flagged (IFN-gamma (R1))", "hot_region_1_n"),
@@ -334,7 +337,7 @@ ax.set_xlim(-0.5, 2.5)
 ax.set_ylim(-2, 60)
 ax.set_ylabel("Bins flagged (%)")
 h1 = [Patch(fc=c, lw=0, label=l[0]) for l, c in zip(cats, CAT_COL)]
-h2 = [Line2D([], [], ls="", marker="o", mfc="#555555", mec="#555555", ms=3, label="Auto null"),
+h2 = [Line2D([], [], ls="", marker="o", mfc="#555555", mec="#555555", ms=3, label="Automatic null"),
       Line2D([], [], ls="", marker="o", mfc="white", mec="#555555", ms=3, mew=0.6,
              label="Left-half null")]
 leg = ax.legend(handles=h1, loc="upper left", bbox_to_anchor=(1.0, 1.05), fontsize=FS_TINY,
@@ -353,7 +356,7 @@ regs = [f"region_{i}" for i in range(5)]
 ax = ax_mm(128, ROW4_Y + 3, 50, ROW4_H - 3)
 lq = lambda q: -np.log10(np.clip(q, 1e-300, 1))  # noqa: E731
 yy = np.arange(len(regs))
-ax.barh(yy - 0.2, [lq(hr.loc[r, "q"]) for r in regs], 0.38, color=FLAG_COLOR, lw=0,
+ax.barh(yy - 0.2, [lq(hr.loc[r, "q"]) for r in regs], 0.38, color="#252525", lw=0,
         label="Unexplained region")
 ax.barh(yy + 0.2, [lq(hp.loc[r, "q"]) for r in regs], 0.38, color="#BDBDBD", lw=0,
         label="Size-matched random bins")

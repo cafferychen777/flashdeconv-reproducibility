@@ -109,7 +109,7 @@ def main():
     for claim, bench, metric, rank, note in [
         ("VB lineage r (mean) min over 8-128um", "Xenium virtual binning", "min mean lineage r (8-128 um)", "", ""),
         ("VB global r 32um", "Xenium virtual binning", "global r 32 um (38 types)", "", ""),
-        ("Global 38-type r FD vs Xenium", "Xenium vs Visium HD P1", "global 38-type proportion r FD", "1 of 2 (RCTD -0.020)", ""),
+        ("Global 38-type r FD vs Xenium", "Xenium vs Visium HD P1", "global 38-type proportion r FD", "2 of 2 (RCTD 0.977)", ""),
         ("Global lineage r FD / RCTD", "Xenium vs Visium HD P1", "global lineage r FD / RCTD", "1 of 2", ""),
         ("Patho fold vs tissue mean (Neoplasm Tumor / Vessel Tumor)", "Pathologist concordance P1", "tumor fold Neoplasm / Vessel", "", ""),
         ("pVHD 4um AUPRC FD / NNLS / marker", "Pseudo-Visium HD 4 um", "AUPRC FD / NNLS / marker", "1 of 3", "max_iter/tol at package defaults (orig 500/1e-6)"),

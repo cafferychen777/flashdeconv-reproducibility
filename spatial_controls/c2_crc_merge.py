@@ -1,28 +1,23 @@
-"""Merge per-patient CRC FINAL outputs into one claim table (ORIG / V020 / FINAL).
-Copy of validation/rerun_v020/crc/merge_v020.py: claims are computed for ORIG and
-FINAL from the final-run tables; the V020 column is taken from
-results/rerun_v020/crc/claims_old_vs_new.csv (same code, same claim names).
-
-Usage: python merge_final.py <results_dir>
-Writes claims_final.csv, type_means_final.csv, fit_diagnostics_final.csv.
-The first block reuses validation/crc_seed_stability/merge.py verbatim in logic.
-"""
-import sys
+"""Control 2a merge: manuscript CRC claims for the default fit (FINAL, results/rerun_final/crc)
+and the lambda_spatial=0 refit (LAM0, results/controls_editor/crc). The claim block is copied
+verbatim from validation/rerun_final/crc/merge_final.py (only FITS and the loader differ)."""
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 from scipy import stats
 
-R = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("results/rerun_final/crc")
-V020_CLAIMS = Path("/Users/apple/Research/FlashDeconv/results/rerun_v020/crc/claims_old_vs_new.csv")
+RF = Path("/Users/apple/Research/FlashDeconv/results/rerun_final/crc")
+RC = Path("/Users/apple/Research/FlashDeconv/results/controls_editor/crc")
 SAMPLES = ["P1_CRC", "P2_CRC", "P5_CRC"]
-FITS = ["ORIG", "FINAL"]
+FITS = ["FINAL", "LAM0"]
 IMMUNE8 = ["Neutrophil", "Macrophage", "mRegDC", "Mast", "CD8 T cell", "CD4 T cell", "Plasma", "Mature B"]
 
 
 def load(name):
-    return pd.concat([pd.read_csv(R / s / f"{name}.csv") for s in SAMPLES], ignore_index=True)
+    a = pd.concat([pd.read_csv(RF / s / f"{name}.csv") for s in SAMPLES], ignore_index=True)
+    b = pd.concat([pd.read_csv(RC / s / f"{name}.csv") for s in SAMPLES], ignore_index=True)
+    return pd.concat([a[a.fit == "FINAL"], b], ignore_index=True)
 
 
 def rng3(v, fmt="{:.1f}"):
@@ -34,12 +29,8 @@ def rng(v, fmt="{:.1f}"):
     return f"{fmt.format(np.nanmin(v))}-{fmt.format(np.nanmax(v))}"
 
 
-cmp_, cmpt = load("compare_summary"), load("compare_types")
 knn, agg, mk, lr = load("knn_enrichment"), load("aggregates"), load("markers"), load("lr")
 rc, lm, bd, tm = load("rctd"), load("lineage_markers"), load("boundary"), load("type_means")
-fd = load("fit_diagnostics")
-cls = load("rctd_class_fractions")
-
 rows = {}
 for f in FITS:
     c = {}
@@ -172,99 +163,24 @@ for f in FITS:
     rows[f] = c
 
 tab = pd.DataFrame(rows)
-# method-independent / fit-level rows
-v = fd[(fd.fit == "FINAL") & (fd.resolution_um == 8)].set_index("sample").loc[SAMPLES]
-extra = {
-    "V020 fit_transform seconds P1/P2/P5": rng3(v.fit_seconds),
-    "V020 total seconds (153) / bins per s (10,400)": f"{v.fit_seconds.sum():.1f} / {v.n_bins.sum() / v.fit_seconds.sum():.0f}",
-    "V020 bins total (1,595,565)": int(v.n_bins.sum()),
-    "V020 converged / iterations / lambda": " ".join(f"{a}/{b}/{c_:.2f}" for a, b, c_ in
-                                                      zip(v.converged, v.n_iterations, v.lambda_used)),
-    "V020 deterministic refit identical": "/".join(map(str, v.refit_identical)),
-    "V020 host / cpus": f"{v.host.iloc[0]} / {v.cpus.iloc[0]} ({v.get('cpu_model', pd.Series(['?'])).iloc[0]})",
-}
-cp = cmp_[(cmp_.fit == "FINAL") & (cmp_.ref == "ORIG")].set_index("sample").loc[SAMPLES]
-ct = cmpt[(cmpt.fit == "FINAL") & (cmpt.ref == "ORIG")]
-extra["V020 vs ORIG hotspot Jaccard"] = rng3(cp.hotspot_jaccard, "{:.2f}")
-extra["V020 vs ORIG median per-bin JSD"] = rng3(cp.median_jsd, "{:.3f}")
-extra["V020 vs ORIG dominant-type agreement"] = rng3(cp.dominant_agreement, "{:.2f}")
-extra["V020 vs ORIG per-bin r Neutrophil"] = rng3(ct[ct.cell_type == "Neutrophil"].set_index("sample").loc[SAMPLES].pearson, "{:.2f}")
-extra["V020 vs ORIG per-bin r mRegDC"] = rng3(ct[ct.cell_type == "mRegDC"].set_index("sample").loc[SAMPLES].pearson, "{:.2f}")
-extra["V020 vs ORIG median per-type per-bin r"] = rng3(ct.groupby("sample").pearson.median().loc[SAMPLES], "{:.2f}")
-cf = cls.pivot_table(index="sample", columns="index", values="fraction").loc[SAMPLES]
-extra["RCTD singlet % per patient (46-59)"] = rng3(100 * cf.get("singlet", np.nan), "{:.1f}")
-extra["RCTD reject % per patient (5-7)"] = rng3(100 * cf.get("reject", np.nan), "{:.1f}")
-tab = pd.concat([tab, pd.DataFrame({"ORIG": {k: "" for k in extra}, "FINAL": extra})])
-
-# multi-resolution niche
-mr_new = pd.concat([pd.read_csv(R / s / "multires_enrichment.csv") for s in SAMPLES
-                    if (R / s / "multires_enrichment.csv").exists()], ignore_index=True)
-old_mr = Path("/Users/apple/Research/FlashDeconv/analysis/crc_cohort_results/neutrophil_multiresolution_enrichment.csv")
-if len(mr_new):
-    mr_old = pd.read_csv(old_mr)
-    for nt in ["Neutrophil", "Macrophage", "mRegDC", "Mast", "Endothelial"]:
-        for lab, df in [("ORIG", mr_old), ("FINAL", mr_new)]:
-            s = []
-            for smp in SAMPLES:
-                d = df[df["sample"] == smp].set_index("resolution_um")
-                s.append(smp[:2] + ":" + ",".join(
-                    f"{d.loc[r, f'ratio_{nt}']:.1f}" if r in d.index and pd.notna(d.loc[r].get(f"ratio_{nt}", np.nan))
-                    else "NA" for r in [8, 16, 32, 64]))
-            tab.loc[f"multires Neut-> {nt} x (8/16/32/64um)", lab] = " ".join(s)
-    for lab, df in [("ORIG", mr_old), ("FINAL", mr_new)]:
-        tab.loc["multires n_hot (8/16/32/64um)", lab] = " ".join(
-            smp[:2] + ":" + ",".join(str(int(x)) for x in df[df["sample"] == smp].sort_values("resolution_um").n_hot)
-            for smp in SAMPLES)
-        tab.loc["multires n_bins (8/16/32/64um)", lab] = " ".join(
-            smp[:2] + ":" + ",".join(str(int(x)) for x in df[df["sample"] == smp].sort_values("resolution_um")
-                                     [("n_total" if "n_total" in df else "n_bins")]) for smp in SAMPLES)
-
-# rename fit-level rows "V020 ..." -> "fit ..." so V020 and FINAL values share one row
-tab.index = [i.replace("V020 vs ORIG", "fit vs ORIG").replace("V020 ", "fit ") if i.startswith("V020") else i
-             for i in tab.index]
-old = pd.read_csv(V020_CLAIMS, index_col=0)
-old.index = [i.replace("V020 vs ORIG", "fit vs ORIG").replace("V020 ", "fit ") if i.startswith("V020") else i
-             for i in old.index]
-tab["V020"] = old["V020"].reindex(tab.index)
-# FINAL vs V020 agreement rows
-cp2 = cmp_[(cmp_.fit == "FINAL") & (cmp_.ref == "V020")].set_index("sample").loc[SAMPLES]
-ct2 = cmpt[(cmpt.fit == "FINAL") & (cmpt.ref == "V020")]
-tab.loc["FINAL vs V020 hotspot Jaccard", "FINAL"] = rng3(cp2.hotspot_jaccard, "{:.2f}")
-tab.loc["FINAL vs V020 median per-bin JSD", "FINAL"] = rng3(cp2.median_jsd, "{:.3f}")
-tab.loc["FINAL vs V020 dominant-type agreement", "FINAL"] = rng3(cp2.dominant_agreement, "{:.2f}")
-tab.loc["FINAL vs V020 per-bin r Neutrophil", "FINAL"] = rng3(
-    ct2[ct2.cell_type == "Neutrophil"].set_index("sample").loc[SAMPLES].pearson, "{:.2f}")
-tab.loc["FINAL vs V020 median per-type per-bin r", "FINAL"] = rng3(ct2.groupby("sample").pearson.median().loc[SAMPLES], "{:.2f}")
-mres = fd[(fd.fit == "FINAL") & (fd.resolution_um > 8)]
-tab.loc["fit converged / iterations multires 16/32/64um", "FINAL"] = " ".join(
-    f"{s[:2]}:" + ",".join(f"{a}/{b}" for a, b in zip(g.sort_values("resolution_um").converged,
-                                                        g.sort_values("resolution_um").n_iterations))
-    for s, g in mres.groupby("sample"))
-tab["note"] = ""
-for i in tab.index:
-    if i.startswith("multires"):
-        tab.loc[i, "note"] = ("definition changed: ORIG archived multires bins were built on a pixel grid scaled by a "
-                              "subsample median-NN distance (2.24 bins), i.e. effective 36/72/143 um instead of 16/32/64 um; "
-                              "V020 and FINAL use array_row/array_col integer division (identical to Space Ranger square_016um)")
-    elif i.startswith("fit ") or i.startswith("FINAL vs"):
-        tab.loc[i, "note"] = "fit-level diagnostic (V020: max_iter=100; FINAL: max_iter=1000, early stop tol=1e-4)"
-tab = tab[["ORIG", "V020", "FINAL", "note"]]
+cs = pd.concat([pd.read_csv(RC / s / "compare_summary.csv") for s in SAMPLES]).set_index("sample").loc[SAMPLES]
+ct = pd.concat([pd.read_csv(RC / s / "compare_types.csv") for s in SAMPLES])
+tab.loc["LAM0 vs FINAL hotspot Jaccard", "LAM0"] = rng3(cs.hotspot_jaccard, "{:.2f}")
+tab.loc["LAM0 vs FINAL median per-bin JSD", "LAM0"] = rng3(cs.median_jsd, "{:.3f}")
+tab.loc["LAM0 vs FINAL dominant-type agreement", "LAM0"] = rng3(cs.dominant_agreement, "{:.2f}")
+tab.loc["LAM0 vs FINAL per-bin r Neutrophil", "LAM0"] = rng3(
+    ct[ct.cell_type == "Neutrophil"].set_index("sample").loc[SAMPLES].pearson, "{:.2f}")
+tab.loc["LAM0 vs FINAL median per-type per-bin r", "LAM0"] = rng3(ct.groupby("sample").pearson.median().loc[SAMPLES], "{:.2f}")
+ac = pd.concat([pd.read_csv(RC / s / "autocorr.csv") for s in SAMPLES])
+for f in FITS:
+    tab.loc["median kNN-6 autocorrelation over 38 types P1/P2/P5", f] = rng3(
+        ac[ac.fit == f].groupby("sample").knn6_autocorr.median().loc[SAMPLES], "{:.2f}")
+    tab.loc["Neutrophil kNN-6 autocorrelation P1/P2/P5", f] = rng3(
+        ac[(ac.fit == f) & (ac.cell_type == "Neutrophil")].set_index("sample").loc[SAMPLES].knn6_autocorr, "{:.2f}")
+fdg = pd.concat([pd.read_csv(RC / s / "fit_diagnostics.csv") for s in SAMPLES])
+tab.loc["LAM0 fit converged/iter/lambda", "LAM0"] = " ".join(
+    f"{a}/{b}/{c:.2f}" for a, b, c in zip(fdg.converged, fdg.n_iterations, fdg.lambda_used))
 tab.index.name = "claim"
-tab.to_csv(R / "claims_final.csv")
-fd.to_csv(R / "fit_diagnostics_final.csv", index=False)
-pd.set_option("display.width", 250)
-pd.set_option("display.max_colwidth", 80)
-pd.set_option("display.max_rows", 300)
+tab.to_csv(RC.parent / "c2_crc_claims_default_vs_lam0.csv")
+pd.set_option("display.width", 250); pd.set_option("display.max_colwidth", 90); pd.set_option("display.max_rows", 300)
 print(tab.to_string())
-
-# per-type means old vs new
-p = tm.pivot_table(index=["sample", "cell_type"], columns="fit", values="mean_proportion")
-vt = pd.read_csv("/Users/apple/Research/FlashDeconv/results/rerun_v020/crc/type_means_old_vs_new.csv").set_index(["sample", "cell_type"])
-p["V020"] = vt["V020"].reindex(p.index)
-p = p[["ORIG", "V020", "FINAL"]]
-p["diff_pp"] = 100 * (p.FINAL - p.ORIG)
-p["diff_pp_vs_V020"] = 100 * (p.FINAL - p.V020)
-p.to_csv(R / "type_means_final.csv")
-print("\nPer-type mean proportion change (pp):")
-print(p.diff_pp.describe().round(3).to_string())
-print(p.reindex(p.diff_pp.abs().sort_values(ascending=False).index).head(10).round(4).to_string())

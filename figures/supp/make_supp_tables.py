@@ -13,6 +13,9 @@ R = PROJ / "results"
 RF = R / "rerun_final"
 SP = RF / "benchmarks" / "spotless"
 V = PROJ / "validation"
+ER = R / "editor_revision"
+# Spotless silver standards: FlashDeconv with lambda=0 (pseudo-spots have no spatial layout)
+SILVER_CFG = "final_default_lam0"
 OUT = PROJ / "paper" / "supp_tables"
 OUT.mkdir(parents=True, exist_ok=True)
 
@@ -59,7 +62,7 @@ def write(name, text):
 # Spotless silver: all 13 methods, 4 metrics, paired Wilcoxon vs FlashDeconv
 # ---------------------------------------------------------------------------
 w = pd.read_csv(SP / "silver_paired_wilcoxon_final.csv")
-w = w[w.config == "final_default"]
+w = w[w.config == SILVER_CFG]
 rows = {}
 for m in METS:
     sub = w[w.metric == m]
@@ -81,9 +84,17 @@ for meth, r in df.iterrows():
         else:
             cells += [val, f"{r[m + '_n']}; {fmt_p(float(r[m + '_p']))}"]
     lines.append(" & ".join(cells) + " \\\\")
+# Extra rows: FlashDeconv with the default spatial penalty on the file-order lattice and on
+# randomly permuted positions (mean of 5 permutations); results/controls_editor/c1_ranks.csv
+c1 = pd.read_csv(R / "controls_editor" / "c1_ranks.csv")
+lines.append("\\midrule")
+for lab, sel in [(r"FlashDeconv, default $\lambda$, file-order lattice", c1.setting == "lattice"),
+                 (r"FlashDeconv, default $\lambda$, permuted positions", c1.setting.str.startswith("perm"))]:
+    v = c1[sel].groupby("metric").fd_mean.mean()
+    lines.append(" & ".join([lab] + [x for m in METS for x in (f"{v[m]:.3f}", "--")]) + " \\\\")
 write("tab_spotless_silver", r"""\begin{table}[H]
 \centering
-\caption{\textbf{Spotless silver standards: all methods and metrics.} Mean over 54 data sets (rank among 13 methods in parentheses). For each competitor, the number of data sets in which FlashDeconv is better and the two-sided paired Wilcoxon signed-rank $P$ value are given. SpatialDWLS returned no JSD for 3 data sets (JSD comparison on 51 data sets). FlashDeconv: package defaults.}
+\caption{\textbf{Spotless silver standards: all methods and metrics.} Mean over 54 data sets (rank among 13 methods in parentheses). For each competitor, the number of data sets in which FlashDeconv is better and the two-sided paired Wilcoxon signed-rank $P$ value are given. SpatialDWLS returned no JSD for 3 data sets (JSD comparison on 51 data sets). FlashDeconv: package defaults with $\lambda = 0$ (the pseudo-spots carry no spatial layout). Last two rows: FlashDeconv with the default automatic $\lambda$, with spots placed on a square lattice in file order or at randomly permuted lattice positions (mean of five permutations); not ranked.}
 \label{tab:spotless_silver}
 \scriptsize
 \setlength{\tabcolsep}{3pt}
@@ -110,9 +121,28 @@ BLAB = {"silver": "Silver standards (54 data sets)", "seqfish_cortex_svz": "seqF
         "liver": "Liver (4 Visium sections)", "liver_ref_stability": "Liver, reference stability",
         "melanoma": "Melanoma (3 Visium sections)"}
 lines = []
-blocks = [("silver", ss[ss.config == "final_default"].assign(benchmark="silver", flash=lambda d: d.flash_mean,
+blocks = [("silver", ss[ss.config == SILVER_CFG].assign(benchmark="silver", flash=lambda d: d.flash_mean,
                                                             best_value=lambda d: d.best_competitor_mean))]
-for b in ["seqfish_cortex_svz", "seqfish_ob", "starmap", "liver", "liver_ref_stability"]:
+# Gold standards: FlashDeconv on the real spot coordinates (validation/controls_editor/gold_realxy.py),
+# competitors rescored with the same metric code
+GOLD_FD = ER / "gold_realxy" / "fd_aggregate_gold.csv"
+GOLD_CFG = "final_default_realxy"
+_gfd = pd.read_csv(GOLD_FD)
+_gfd = _gfd[_gfd.config == GOLD_CFG].assign(method="flashdeconv")
+_gcp = pd.read_csv(SP / "gold_competitors_recomputed.csv")
+_gm = pd.concat([_gfd[["benchmark", "method"] + METS], _gcp[["benchmark", "method"] + METS]]) \
+    .groupby(["benchmark", "method"])[METS].mean()
+for b in ["seqfish_cortex_svz", "seqfish_ob", "starmap"]:
+    s_ = _gm.loc[b]
+    rows_ = []
+    for m in METS:
+        rk_ = s_[m].rank(ascending=LOW[m], method="min")
+        comp_ = s_.drop("flashdeconv")[m]
+        best_ = comp_.idxmin() if LOW[m] else comp_.idxmax()
+        rows_.append(dict(metric=m, flash=s_.loc["flashdeconv", m], rank_of_13=rk_["flashdeconv"],
+                          best_competitor=best_, best_value=comp_[best_]))
+    blocks.append((b, pd.DataFrame(rows_)))
+for b in ["liver", "liver_ref_stability"]:
     blocks.append((b, cs[(cs.benchmark == b) & (cs.config == "final_default")]))
 for b, g in blocks:
     first = True
@@ -129,7 +159,7 @@ for cfg, lab in [("final_default", "Melanoma (3 Visium sections)"), ("final_defa
     lines.append(f"{lab} & {met} & {fmt(r.flash)} & {int(r.rank_of_13)} & {NAMES.get(r.best_competitor)} & {fmt(r.best_value)} \\\\")
 write("tab_unified_metrics", r"""\begin{table}[H]
 \centering
-\caption{\textbf{FlashDeconv across all Spotless benchmarks.} FlashDeconv value, rank among 13 methods (1 = best) and the best competing method. Silver-standard values are means over 54 data sets; gold-standard values are means over fields of view (FOVs) or the single STARmap section, with all competitors rescored from their published predictions with the same metric code and ground truth; liver JSD and AUPR (mean of portal- and central-vein endothelial AUPR) and melanoma JSD are compared with the values reported by Spotless; reference stability is the mean JSD between the tissue compositions estimated with the three liver references (lower is more stable). FlashDeconv used package defaults; the melanoma row labelled Pearson residuals uses \texttt{preprocess="pearson"} with otherwise default parameters.}
+\caption{\textbf{FlashDeconv across all Spotless benchmarks.} FlashDeconv value, rank among 13 methods (1 = best) and the best competing method. Silver-standard values are means over 54 data sets; gold-standard values are means over fields of view (FOVs) or the single STARmap section, with all competitors rescored from their published predictions with the same metric code and ground truth; liver JSD and AUPR (mean of portal- and central-vein endothelial AUPR) and melanoma JSD are compared with the values reported by Spotless; reference stability is the mean JSD between the tissue compositions estimated with the three liver references (lower is more stable). FlashDeconv used package defaults ($\lambda = 0$ on the silver standards, whose pseudo-spots have no spatial layout; measured spot coordinates on the gold standards); the melanoma row labelled Pearson residuals uses \texttt{preprocess="pearson"} with otherwise default parameters.}
 \label{tab:unified_metrics}
 \small
 \begin{tabular}{@{}llrrlr@{}}
@@ -145,8 +175,8 @@ Benchmark & Metric & FlashDeconv & Rank & Best competitor & Value \\
 # ---------------------------------------------------------------------------
 # Gold standards: all methods, all metrics
 # ---------------------------------------------------------------------------
-fd = pd.read_csv(SP / "fd_aggregate_gold.csv")
-fd = fd[fd.config == "final_default"].assign(method="FlashDeconv")
+fd = pd.read_csv(GOLD_FD)
+fd = fd[fd.config == GOLD_CFG].assign(method="FlashDeconv")
 cp = pd.read_csv(SP / "gold_competitors_recomputed.csv")
 allg = pd.concat([fd[["benchmark", "method"] + METS], cp[["benchmark", "method"] + METS]])
 allg["method"] = allg.method.map(lambda s: NAMES.get(s, s))
@@ -164,7 +194,7 @@ for i, meth in enumerate(methods):
     lines.append(lab + " & " + " & ".join(cols[(b, m)][i] for b in bench for m in METS) + " \\\\")
 write("tab_gold", r"""\begin{table}[H]
 \centering
-\caption{\textbf{Spotless gold standards: all methods and metrics.} Means over the seven fields of view of each seqFISH+ data set and over the single STARmap section. Competitor predictions from the published Spotless results were clipped at zero, matched by cell-type name, restricted to the cell types in the ground truth, renormalized and scored with the same code as FlashDeconv. Bold, best value per column. $r$, Pearson correlation.}
+\caption{\textbf{Spotless gold standards: all methods and metrics.} Means over the seven fields of view of each seqFISH+ data set and over the single STARmap section. Competitor predictions from the published Spotless results were clipped at zero, matched by cell-type name, restricted to the cell types in the ground truth, renormalized and scored with the same code as FlashDeconv. FlashDeconv used package defaults with the measured spot coordinates. Bold, best value per column. $r$, Pearson correlation.}
 \label{tab:gold}
 \scriptsize
 \setlength{\tabcolsep}{2.5pt}
@@ -265,7 +295,7 @@ Method & RMSE & Type JSD & RMSE & Type JSD & RMSE & Type JSD & RMSE & JSD \\
 # ---------------------------------------------------------------------------
 from scipy.stats import wilcoxon  # noqa: E402
 
-ms_ = pd.read_csv(RF / "benchmarks" / "marker_scoring" / "final_default" / "marker_scoring_comparison.csv")
+ms_ = pd.read_csv(ER / "marker_scoring_lam0" / "marker_scoring_comparison.csv")
 ML = {"FlashDeconv": "FlashDeconv", "MarkerScoring_maxgap": "Marker scoring (max-gap markers)",
       "MarkerScoring_wilcoxon": "Marker scoring (Wilcoxon markers)"}
 lines = []
@@ -287,7 +317,7 @@ for meth in ["MarkerScoring_maxgap", "MarkerScoring_wilcoxon"]:
     foot.append(f"{ML[meth]}: FlashDeconv higher Pearson for {bp} of 76 cell types ($P = {fmt_p(pp).strip('$')}$) and higher AUPR for {ba} (lower for {wa}; $P = {fmt_p(pa).strip('$')}$)")
 write("tab_marker_scoring", r"""\begin{table}[H]
 \centering
-\caption{\textbf{FlashDeconv versus marker-gene scoring on the Spotless silver standards.} Per-cell-type Pearson correlation, AUPR and RMSE, averaged over the 76 cell types of the first abundance pattern of each of the six tissues, by mean abundance (rare, $<5\%$, $n = 26$; moderate, 5--15\%, $n = 42$; abundant, $>15\%$, $n = 8$). Paired two-sided Wilcoxon tests over the 76 cell types: """ + "; ".join(foot) + r""".}
+\caption{\textbf{FlashDeconv versus marker-gene scoring on the Spotless silver standards.} Per-cell-type Pearson correlation, AUPR and RMSE, averaged over the 76 cell types of the first abundance pattern of each of the six tissues, by mean abundance (rare, $<5\%$, $n = 26$; moderate, 5--15\%, $n = 42$; abundant, $>15\%$, $n = 8$). FlashDeconv, package defaults with $\lambda = 0$. Paired two-sided Wilcoxon tests over the 76 cell types: """ + "; ".join(foot) + r""".}
 \label{tab:marker_scoring}
 \scriptsize
 \setlength{\tabcolsep}{3pt}
@@ -310,7 +340,8 @@ rt = pd.read_csv(RF / "benchmarks" / "c1" / "c1_runtime_table_final.csv")
 ROWS = [("flashdeconv_final", "default", "FlashDeconv"),
         ("flashdeconv_final_coldcache", "default", "FlashDeconv, first call (JIT compilation)"),
         ("rctd", "doublet", "RCTD, doublet mode"), ("rctd", "full", "RCTD, full mode"),
-        ("card", "default", "CARD"), ("cell2location", "fullbatch", "Cell2location (GPU)")]
+        ("card", "default", "CARD"), ("cell2location", "fullbatch", "Cell2location, full batch (GPU)"),
+        ("cell2location", "minibatch", "Cell2location, minibatch (GPU)")]
 SCALES = [10000, 100000, 300000, 1000000]
 
 
@@ -324,7 +355,11 @@ def cell(r):
         return ts, f"{r.peak_rss_gb:.1f}"
     if s == "OOM":
         return "OOM", "--"
-    return "\\TBD{running}" if s.startswith("RUNNING") else "\\TBD{pending}", "--"
+    if s.startswith("TIMEOUT"):
+        return "$>$24~h", "--"
+    if s == "NOT_RUN":
+        return "n.r.", "--"
+    raise ValueError(f"unexpected status {s!r} for {r.method} {r['mode']} {r.scale}")
 
 
 lines = []
@@ -336,7 +371,7 @@ for meth, mode, lab in ROWS:
     lines.append(" & ".join(cells) + " \\\\")
 write("tab_runtime", r"""\begin{table}[H]
 \centering
-\caption{\textbf{Runtime and peak memory on pooled CRC Visium HD 8-$\mu$m bins.} Nested random subsets of $10^4$ to $10^6$ bins (18,082 genes, 38 cell types); every CPU run used 32 threads on identical nodes (AMD EPYC 7763), Cell2location one NVIDIA A30 GPU. Wall time of the fitting call, excluding data loading, and peak memory (GB, summed proportional set size of all processes). FlashDeconv values are medians of three repetitions at $10^4$ and $10^5$ bins; all other entries are single runs. FlashDeconv converged in 153, 148, 159 and 170 iterations. The first-call row includes Numba compilation in a fresh process. OOM, the run exceeded the 500-GB memory limit (CARD at $10^6$ bins failed when allocating its dense spatial kernel). RCTD doublet mode at $10^6$ bins and Cell2location were still running or queued when this version was compiled.}
+\caption{\textbf{Runtime and peak memory on pooled CRC Visium HD 8-$\mu$m bins.} Nested random subsets of $10^4$ to $10^6$ bins (18,082 genes, 38 cell types); every CPU run used 32 threads on identical nodes (AMD EPYC 7763) with a 500-GB memory limit and a 24-h time limit. Cell2location ran on one GPU with 16 CPU cores: an NVIDIA GH200 (NCSA DeltaAI) at $10^4$ and $10^5$ bins and an NVIDIA A30 (TAMU ACES, host-memory limit 470~GB) at $3\times10^5$ and $10^6$ bins; its peak memory is host memory (peak GPU memory 8.8, 82.7 and 17.9~GB for full batch at $10^4$ and $10^5$ bins and minibatch at $10^5$ bins, and 18.5~GB for minibatch at $3\times10^5$ bins), and its times exclude the one-time reference regression (17.5~min). Wall time of the fitting call, excluding data loading, and peak memory (GB, summed proportional set size of all processes). FlashDeconv values are medians of three repetitions at $10^4$ and $10^5$ bins; all other entries are single runs. FlashDeconv converged in 153, 148, 159 and 170 iterations. The first-call row includes Numba compilation in a fresh process. OOM, the run exceeded the memory limit (CARD at $10^6$ bins failed when allocating its dense spatial kernel; Cell2location minibatch at $10^6$ bins completed training and exceeded the 470-GB host-memory limit while exporting the posterior). $>$24~h, the run reached the 24-h time limit without completing. n.r., not run.}
 \label{tab:runtime}
 \scriptsize
 \setlength{\tabcolsep}{3pt}
@@ -357,7 +392,7 @@ Method & Time & GB & Time & GB & Time & GB & Time & GB \\
 # ---------------------------------------------------------------------------
 c2 = pd.read_csv(RF / "benchmarks" / "c2" / "c2_supp_table.csv")
 print(c2.method.unique(), c2.eval_set.unique())
-MLAB2 = {"FlashDeconv": "FlashDeconv", "FlashDeconv (lambda=0)": "FlashDeconv ($\\lambda=0$)",
+MLAB2 = {"FlashDeconv": "FlashDeconv", "FlashDeconv (λ = 0)": r"FlashDeconv ($\lambda=0$)",
          "RCTD (doublet)": "RCTD doublet", "RCTD (full)": "RCTD full", "NNLS": "NNLS",
          "Marker scoring": "Marker scoring"}
 EVAL = {"all predicted bins": "all", "common bins with RCTD doublet": "doublet", "common bins with RCTD full": "full"}
@@ -393,7 +428,7 @@ def c2_table(evalset, label, caption):
 \setlength{\tabcolsep}{3pt}
 \begin{tabular}{@{}llrrrrrrrr@{}}
 \toprule
-Bin & Method & Bins & Scored (\\%) & $r$ (all) & $r$ (type) & RMSE & JSD & AP (all) & AP (type) \\\\
+Bin & Method & Bins & Scored (\%) & $r$ (all) & $r$ (type) & RMSE & JSD & AP (all) & AP (type) \\
 \midrule
 """ + "\n".join(lines) + r"""
 \bottomrule
@@ -415,8 +450,8 @@ write("tab_pseudo_vhd_full", c2_table(
 # ---------------------------------------------------------------------------
 # Gene weighting (Spotless): body only (caption lives in supplementary.tex)
 # ---------------------------------------------------------------------------
-acc = pd.read_csv(RF / "weighting" / "spotless_acc.csv")
-stw = pd.read_csv(RF / "weighting" / "stats_spotless.csv")
+acc = pd.read_csv(ER / "weighting_lam0" / "spotless_acc_lam0.csv")
+stw = pd.read_csv(ER / "weighting_lam0" / "stats_spotless_lam0.csv")
 stw = stw[(stw.unit == "dataset") & (stw.comparison == "EXP_LEV vs UNIFORM")]
 means = acc.groupby(["frac", "variant"])[METS if False else ["pearson", "rmse", "jsd", "aupr"]].mean()
 WM = [("pearson", "Pearson $r$"), ("rmse", "RMSE"), ("jsd", "JSD"), ("aupr", "AUPR")]
@@ -470,11 +505,11 @@ rows = [("Bins (8~$\\mu$m)", [f"{int(tm.loc[s, 'n_bins']):,}" for s in ["P1_CRC"
         ("Aggregates, stromal-resident/tumour-proximal", agg),
         ("mRegDC $\\log_2$ enrichment, stromal-resident (median)", mreg),
         ("Macrophage $\\log_2$ enrichment, stromal-resident (median)", mac),
-        ("\\textit{LAMP3} fold in hotspot neighbourhoods ($P$)", [f"{a} ({fmt_p(float(b))})" for a, b in zip(lamp, lampp)])]
+        ("\\textit{LAMP3} fold in hotspot neighbourhoods", lamp)]
 lines = [f"{lab} & " + " & ".join(v) + " \\\\" for lab, v in rows]
 write("tab_crc_patients", r"""\begin{table}[H]
 \centering
-\caption{\textbf{Colorectal cancer cohort: per-patient statistics.} Visium HD sections of patients P1, P2 and P5 at 8~$\mu$m, 38-type Flex reference. Fitting time on 32 threads (AMD EPYC 7763). Hotspot bins, neutrophil proportion $\ge 0.1$. Self-enrichment, mean neutrophil proportion among the 30 nearest bins of hotspot bins relative to the section mean. Aggregates, DBSCAN clusters of hotspot bins with at least 50 neighbourhood bins. $\log_2$ enrichment, mean proportion within 120~$\mu$m of an aggregate relative to the section mean. \textit{LAMP3} fold, normalized expression within 100~$\mu$m of hotspot bins relative to random background bins (one-sided Mann--Whitney $P$). Source: \texttt{results/rerun\_final/crc/claims\_final.csv}, \texttt{timing\_final.csv}.}
+\caption{\textbf{Colorectal cancer cohort: per-patient statistics.} Visium HD sections of patients P1, P2 and P5 at 8~$\mu$m, 38-type Flex reference. Fitting time on 32 threads (AMD EPYC 7763). Hotspot bins, neutrophil proportion $\ge 0.1$. Self-enrichment, mean neutrophil proportion among the 30 nearest bins of hotspot bins relative to the section mean. Aggregates, DBSCAN clusters of hotspot bins with at least 50 neighbourhood bins. $\log_2$ enrichment, mean proportion within 120~$\mu$m of an aggregate relative to the section mean. \textit{LAMP3} fold, normalized expression within 100~$\mu$m of hotspot bins relative to random background bins.}
 \label{tab:crc_patients}
 \small
 \begin{tabular}{@{}lrrr@{}}
@@ -506,7 +541,7 @@ tot_bins = int(sum(ss1.loc[k].n_hd_bins for k, *_ in SEC))
 tot_t = sum(ss1.loc[k].t_deconvolve_s for k, *_ in SEC)
 write("tab_interface", r"""\begin{table}[H]
 \centering
-\caption{\textbf{Tumour--stroma interface analysis: sections, fitting and concordance.} Bins, 8-$\mu$m Visium HD bins with at least one count; time, FlashDeconv fitting time with package defaults (total """ + f"{tot_bins:,}" + r""" bins in """ + f"{tot_t / 60:.2f}" + r"""~min); orthogonal units, assigned Xenium cells or CODEX cells; lineages, lineages included in the concordance (mean orthogonal fraction $\ge 0.5\%$, epithelial excluded); median $r$, median over included lineages of the Pearson correlation across 20 distance bands between FlashDeconv and orthogonal gradients (pre-specified criterion, $> 0.7$). Primary sections: CRC P1, P2, P5, COAD and OV-1.}
+\caption{\textbf{Tumour--stroma interface analysis: sections, fitting and concordance.} Bins, 8-$\mu$m Visium HD bins with at least one count (for CRC P1, P2 and P5, 1,600, 63 and 22 fewer than the in-tissue bins of Supplementary Table~\ref{tab:crc_patients}, which include bins without counts); time, wall time of the FlashDeconv \texttt{deconvolve} call (data preparation and fitting) with package defaults on 16 threads, with the sections run as simultaneous jobs (total """ + f"{tot_bins:,}" + r""" bins in """ + f"{tot_t / 60:.2f}" + r"""~min); the CRC fitting times in Supplementary Table~\ref{tab:crc_patients} measure the fit alone, run sequentially on 32 threads; orthogonal units, assigned Xenium cells or CODEX cells; lineages, lineages included in the concordance (mean orthogonal fraction $\ge 0.5\%$, epithelial excluded); median $r$, median over included lineages of the Pearson correlation across 20 distance bands between FlashDeconv and orthogonal gradients (threshold, $> 0.7$). Primary sections: CRC P1, P2, P5, COAD and OV-1.}
 \label{tab:interface}
 \scriptsize
 \setlength{\tabcolsep}{3pt}
@@ -515,6 +550,86 @@ write("tab_interface", r"""\begin{table}[H]
 Section & Cancer & Bins & Time (s) & Iterations & Orthogonal data & Units & Lineages & Median $r$ \\
 \midrule
 """ + "\n".join(lines) + r"""
+\bottomrule
+\end{tabular}
+\end{table}
+""")
+
+# ---------------------------------------------------------------------------
+# CRC and tumour-stroma interface conclusions with and without the spatial penalty
+# (results/controls_editor/c2_crc_claims_default_vs_lam0.csv, c2_b1_*_default_vs_lam0.csv)
+# ---------------------------------------------------------------------------
+CE = R / "controls_editor"
+cc = pd.read_csv(CE / "c2_crc_claims_default_vs_lam0.csv").set_index("claim")
+
+
+def cl2(key):
+    return [str(cc.loc[key, c]) for c in ("FINAL", "LAM0")]
+
+
+def p2(key):
+    return [fmt_p(float(cc.loc[key, c])) for c in ("FINAL", "LAM0")]
+
+
+def slash(v):
+    return v.replace("/", " / ")
+
+
+crc_rows = [
+    ("Neutrophil hotspot bins, total", [f"{int(x):,}" for x in cl2("hotspot bins total (16,827)")]),
+    ("Neutrophil self-enrichment, P1 / P2 / P5 (fold)", [slash(x) for x in cl2("Neutrophil self-enrichment x (16.6/22.8/56.2)")]),
+    ("Neutrophil self-enrichment rank of 38, P1 / P2 / P5",
+     [slash(x.split(" ")[0]) for x in cl2("Neutrophil self-enrichment rank among types (1=top)")]),
+    ("Aggregates, stromal-resident / tumour-proximal", [slash(x) for x in cl2("stromal-resident / tumor-proximal (25/47)")]),
+    ("mRegDC, stromal-resident $>$ tumour-proximal ($P$)", p2("MWU SR>TP mRegDC p")),
+    ("Macrophages, stromal-resident $>$ tumour-proximal ($P$)", p2("MWU SR>TP Macrophage p")),
+    ("CD8 T cells, stromal-resident $>$ tumour-proximal ($P$)", p2("MWU SR>TP CD8 T cell p")),
+    ("Mast cells, stromal-resident $>$ tumour-proximal ($P$)", p2("MWU SR>TP Mast p")),
+    ("Neutrophil marker enrichment in hotspots (fold)", [x.replace("-", "--") for x in cl2("neutrophil marker FC range (11-63)")]),
+    ("\\textit{LAMP3} in hotspot neighbourhoods (median fold)", [x.split(" ")[0] for x in cl2("LAMP3 neighborhood fold (1.40; 1.13-1.67)")]),
+    ("RCTD neutrophil singlets among hotspot bins (\\%)", cl2("RCTD Neutrophil singlet % of hotspot bins")),
+]
+agree = [("Hotspot overlap with default fit (Jaccard), P1 / P2 / P5", slash(cc.loc["LAM0 vs FINAL hotspot Jaccard", "LAM0"])),
+         ("Dominant cell type identical to default fit, P1 / P2 / P5", slash(cc.loc["LAM0 vs FINAL dominant-type agreement", "LAM0"]))]
+lines = [f"{lab} & {a} & {b} \\\\" for lab, (a, b) in crc_rows]
+lines += [f"{lab} & -- & {b} \\\\" for lab, b in agree]
+
+conc = pd.read_csv(CE / "c2_b1_concordance_default_vs_lam0.csv")
+desc = pd.read_csv(CE / "c2_b1_descriptors_default_vs_lam0.csv")
+SECS = [("CRC_P1", "CRC P1"), ("CRC_P2", "CRC P2"), ("CRC_P5", "CRC P5"), ("SPATCH_COAD", "COAD"),
+        ("SPATCH_OV", "OV-1"), ("SPATCH_HCC", "HCC"), ("LUNG_X1", "Lung 1"), ("LUNG_X5K", "Lung 2"), ("OV10X", "OV-2")]
+ib = []
+for key, lab in SECS:
+    v = conc.set_index(["fit", "section"]).median_r
+    ib.append(f"Median concordance $r$, {lab} & {v[('default', key)]:.3f} & {v[('lam0', key)]:.3f} \\\\")
+dsub = desc[desc.section.isin([k for k, _ in SECS])]
+for lin, lab, col in [("Macrophage/Mono", "Macrophage rim enrichment supported by orthogonal data", "supported"),
+                      ("Pericyte/SMC", "Pericyte/smooth-muscle deep-stroma enrichment supported by Xenium", "supported")]:
+    vals = []
+    for f in ("default", "lam0"):
+        s_ = dsub[(dsub.fit == f) & (dsub.lineage == lin)]
+        vals.append(f"{int(s_[col].sum())} of {int(s_.testable.sum())}")
+    ib.append(f"{lab} & {vals[0]} & {vals[1]} \\\\")
+vals = []
+for f in ("default", "lam0"):
+    s_ = dsub[(dsub.fit == f) & (dsub.lineage == "Fibroblast")]
+    vals.append(f"{int((s_.fd_step > 0).sum())} of {len(s_)}")
+ib.append(f"Fibroblast increase across the boundary, sections other than HCC & {vals[0]} & {vals[1]} \\\\")
+
+write("tab_lam0_controls", r"""\begin{table}[H]
+\centering
+\caption{\textbf{Colorectal cancer and tumour--stroma interface results with and without the spatial penalty.} Each Visium HD section was refitted with $\lambda = 0$, all other settings unchanged, and every analysis was repeated with identical code. Default, package defaults (automatic $\lambda$). $P$ values, one-sided Mann--Whitney tests over 74 (default) or 73 ($\lambda = 0$) aggregates. Marker enrichment, range over neutrophil markers and patients. Concordance, median over lineages of the Pearson correlation between FlashDeconv and orthogonal gradients (Methods).}
+\label{tab:lam0_controls}
+\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+ & Default & $\lambda = 0$ \\
+\midrule
+\multicolumn{3}{@{}l}{\textit{Colorectal cancer (P1, P2, P5)}} \\
+""" + "\n".join(lines) + r"""
+\midrule
+\multicolumn{3}{@{}l}{\textit{Tumour--stroma interface (nine sections)}} \\
+""" + "\n".join(ib) + r"""
 \bottomrule
 \end{tabular}
 \end{table}

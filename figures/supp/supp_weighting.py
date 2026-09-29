@@ -1,7 +1,8 @@
 """Supplementary figure: expected-leverage gene weighting across sequencing depth.
 
 Full detail behind Fig. 2a,b (Spotless depth series; Xenium CRC pseudo-Visium HD).
-Reads results/rerun_final/weighting/*.csv and draws one canvas.
+Spotless panels (a-c): lambda=0 (results/editor_revision/weighting_lam0/; the pseudo-spots have
+no spatial layout). Xenium panels (d, e): results/rerun_final/weighting/ (real bin centres, auto lambda).
 Output: paper/figures/supp_weighting.{pdf,png}
 """
 import sys
@@ -51,8 +52,9 @@ def p_text(p):
     return f"$P$ = {p:.2f}" if p >= 0.01 else f"$P$ = {p:.3f}"
 
 
-acc = pd.read_csv(W / "spotless_acc.csv")
-pt = pd.read_csv(W / "spotless_pertype.csv")
+WL = RESULTS / "editor_revision" / "weighting_lam0"
+acc = pd.read_csv(WL / "spotless_acc_lam0.csv")
+pt = pd.read_csv(WL / "spotless_pertype_lam0.csv")
 xa = pd.read_csv(W / "xenium_acc.csv")
 xp = pd.read_csv(W / "xenium_pertype.csv")
 sx = pd.read_csv(W / "stats_xenium.csv")

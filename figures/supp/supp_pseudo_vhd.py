@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from style import *  # noqa: E402,F401,F403
 
 C2DIR = RESULTS / "rerun_final" / "benchmarks" / "c2"
-SRC = C2DIR / "c2_final_summary_long.csv"
+SRC = C2DIR / "c2_standard_metrics_final.csv"  # same source as Supplementary Table S9 (AP)
 OUT_TABLE = C2DIR / "c2_supp_table.csv"
 
 SIZES = [2, 4, 8, 16, 32]
@@ -89,10 +89,10 @@ def build_supp_table(src: Path = SRC) -> pd.DataFrame:
 STYLE = {
     "FlashDeconv": dict(color=FD_COLOR, ls="-", marker="o", mfc=FD_COLOR, zorder=6),
     FD_L0: dict(color="#EFA36B", ls=(0, (3, 1.5)), marker="o", mfc="white", zorder=5),
-    "RCTD (doublet)": dict(color=METHOD_COLORS["RCTD (doublet)"], ls="-", marker="s",
-                           mfc=METHOD_COLORS["RCTD (doublet)"], zorder=4),
-    "RCTD (full)": dict(color=METHOD_COLORS["RCTD (full)"], ls="-", marker="D",
-                        mfc=METHOD_COLORS["RCTD (full)"], zorder=4),
+    "RCTD (doublet)": dict(color=METHOD_COLORS["RCTD (doublet)"], ls=RCTD_LS["doublet"],
+                           marker=RCTD_MARKERS["doublet"], mfc=METHOD_COLORS["RCTD (doublet)"], zorder=4),
+    "RCTD (full)": dict(color=METHOD_COLORS["RCTD (full)"], ls=RCTD_LS["full"],
+                        marker=RCTD_MARKERS["full"], mfc=METHOD_COLORS["RCTD (full)"], zorder=4),
     "NNLS": dict(color=METHOD_COLORS["NNLS"], ls="-", marker="^", mfc=METHOD_COLORS["NNLS"], zorder=3),
     "Marker scoring": dict(color=METHOD_COLORS["Marker scoring"], ls="-", marker="v",
                            mfc=METHOD_COLORS["Marker scoring"], zorder=3),
@@ -133,7 +133,7 @@ def main():
     # ---- a-f: six metrics, all predicted bins; g: coverage ----------------
     left, gap, w, h = 13.0, 13.5, 30.5, 30.0
     rows_y = [8.0, 52.0]
-    panels = METRICS + [("coverage", "Fraction of bins scored", True)]
+    panels = METRICS + [("coverage", "Bins scored (%)", True)]
     letters = "abcdefg"
     axes = []
     for k, (col, lab, _) in enumerate(panels):
@@ -147,7 +147,7 @@ def main():
         if col == "coverage":
             ax.set_ylim(0, 1.05)
             ax.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
-            ax.set_yticklabels(["0", "25%", "50%", "75%", "100%"])
+            ax.set_yticklabels(["0", "25", "50", "75", "100"])
         panel_label(ax, letters[k], dx_mm=-11.5)
         axes.append(ax)
 
@@ -188,10 +188,11 @@ def main():
     # legend for h (marker = RCTD mode; colour = method)
     from matplotlib.lines import Line2D
     mk = lambda m, c, l: Line2D([], [], ls="none", marker=m, ms=3.2, mfc=c, mec=c, label=l)
-    hh = [mk("s", FD_COLOR, "FlashDeconv, RCTD-doublet bins"),
-          mk("s", STYLE["RCTD (doublet)"]["color"], "RCTD (doublet)"),
-          mk("D", FD_COLOR, "FlashDeconv, RCTD-full bins"),
-          mk("D", STYLE["RCTD (full)"]["color"], "RCTD (full)")]
+    md, mf = STYLE["RCTD (doublet)"]["marker"], STYLE["RCTD (full)"]["marker"]
+    hh = [mk(md, FD_COLOR, "FlashDeconv, RCTD-doublet bins"),
+          mk(md, STYLE["RCTD (doublet)"]["color"], "RCTD (doublet)"),
+          mk(mf, FD_COLOR, "FlashDeconv, RCTD-full bins"),
+          mk(mf, STYLE["RCTD (full)"]["color"], "RCTD (full)")]
     fig.legend(handles=hh, loc="upper left", ncol=4, fontsize=FS,
                bbox_to_anchor=(left / W, 1 - (y_h + 28.0 + 10.5) / H), borderaxespad=0,
                handletextpad=0.2, columnspacing=1.6)
